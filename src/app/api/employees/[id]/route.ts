@@ -38,7 +38,7 @@ export async function PATCH(
   const body = await req.json();
   const parsed = UpdateEmployeeSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.errors }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
 
   const { startDate, endDate, ...rest } = parsed.data;

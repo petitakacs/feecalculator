@@ -1,4 +1,3 @@
-// This is your Prisma schema file
 // All percentages stored as decimals (e.g., 0.039 for 3.9%)
 // All monetary amounts stored as integers (cents) to avoid float issues
 
@@ -7,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -33,16 +32,16 @@ enum Role {
 }
 
 model Position {
-  id                       String               @id @default(cuid())
-  name                     String               @unique
+  id                       String                 @id @default(cuid())
+  name                     String                 @unique
   multiplier               Decimal
-  eligibleForServiceCharge Boolean              @default(true)
+  eligibleForServiceCharge Boolean                @default(true)
   defaultOvertimeRule      String?
   minHourlyServiceCharge   Int?
   maxHourlyServiceCharge   Int?
-  active                   Boolean              @default(true)
-  createdAt                DateTime             @default(now())
-  updatedAt                DateTime             @updatedAt
+  active                   Boolean                @default(true)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
   employees                Employee[]
   seasonPositionRules      SeasonPositionRule[]
   monthlyEntries           MonthlyEmployeeEntry[]
@@ -60,7 +59,7 @@ model Employee {
   startDate                DateTime
   endDate                  DateTime?
   location                 String?
-  notes                    String?
+  notes                    String?                @db.Text
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
   monthlyEntries           MonthlyEmployeeEntry[]
@@ -112,7 +111,7 @@ model BusinessRule {
   effectiveTo          DateTime?
   serviceChargePercent Decimal
   employeeContribution Decimal
-  notes                String?
+  notes                String?   @db.Text
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 }
@@ -130,7 +129,7 @@ model MonthlyPeriod {
   approvedDistributionTotal Int                    @default(0)
   closingBalance            Int                    @default(0)
   status                    PeriodStatus           @default(DRAFT)
-  notes                     String?
+  notes                     String?                @db.Text
   lockedAt                  DateTime?
   lockedBy                  String?
   createdAt                 DateTime               @default(now())
@@ -169,7 +168,7 @@ model MonthlyEmployeeEntry {
   manualCorrection             Int           @default(0)
   manualCorrectionReason       String?
   finalApprovedAmount          Int?
-  notes                        String?
+  notes                        String?       @db.Text
   overrideFlag                 Boolean       @default(false)
   overrideReason               String?
   createdAt                    DateTime      @default(now())

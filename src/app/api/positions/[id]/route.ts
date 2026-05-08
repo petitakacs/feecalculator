@@ -34,7 +34,7 @@ export async function PATCH(
   const body = await req.json();
   const parsed = UpdatePositionSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.errors }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
 
   const updated = await prisma.position.update({

@@ -28,7 +28,7 @@ export async function POST(
   const body = await req.json();
   const parsed = ApprovalActionSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.errors }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
 
   const newStatus = actionToStatus[parsed.data.action];
