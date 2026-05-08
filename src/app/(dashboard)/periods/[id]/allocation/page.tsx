@@ -10,13 +10,14 @@ import { AllocationTable } from "@/components/allocation/AllocationTable";
 export default async function AllocationPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
   const period = await prisma.monthlyPeriod.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       season: true,
       entries: {
@@ -40,7 +41,7 @@ export default async function AllocationPage({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link href={`/periods/${params.id}`} className="text-gray-500 hover:text-gray-700">
+        <Link href={`/periods/${id}`} className="text-gray-500 hover:text-gray-700">
           ← Period Detail
         </Link>
         <span className="text-gray-300">/</span>

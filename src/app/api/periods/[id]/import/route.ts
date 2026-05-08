@@ -7,15 +7,16 @@ import { parseImportFile, processImportRows } from "@/lib/import";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "import:data")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const period = await prisma.monthlyPeriod.findUnique({ where: { id: params.id } });
+  const period = await prisma.monthlyPeriod.findUnique({ where: { id } });
   if (!period) return NextResponse.json({ error: "Period not found" }, { status: 404 });
   if (period.status === "CLOSED") {
     return NextResponse.json({ error: "Period is closed" }, { status: 422 });
@@ -65,10 +66,10 @@ export async function POST(
 
     await prisma.monthlyEmployeeEntry.upsert({
       where: {
-        periodId_employeeId: { periodId: params.id, employeeId: employee.id },
+        periodId_employeeId: { periodId: id, employeeId: employee.id },
       },
       create: {
-        periodId: params.id,
+        periodId: id,
         employeeId: employee.id,
         positionId: employee.positionId,
         workedHours: row.hours,
@@ -94,7 +95,7 @@ export async function POST(
   // Log the import
   await prisma.importLog.create({
     data: {
-      periodId: params.id,
+      periodId: id,
       fileName: file.name,
       rowCount: rawRows.length,
       errors: errors.length > 0 ? (errors as unknown as import("@prisma/client").Prisma.InputJsonValue) : undefined,

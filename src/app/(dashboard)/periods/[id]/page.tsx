@@ -10,13 +10,14 @@ import { PeriodActions } from "@/components/periods/PeriodActions";
 export default async function PeriodDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
   const period = await prisma.monthlyPeriod.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       season: true,
       approvals: {

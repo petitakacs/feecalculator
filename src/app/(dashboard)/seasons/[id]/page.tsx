@@ -8,17 +8,18 @@ import { SeasonForm } from "@/components/seasons/SeasonForm";
 export default async function SeasonDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
-  const isNew = params.id === "new";
+  const isNew = id === "new";
 
   const season = isNew
     ? null
     : await prisma.season.findUnique({
-        where: { id: params.id },
+        where: { id },
       });
 
   if (!isNew && !season) notFound();

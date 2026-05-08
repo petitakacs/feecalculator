@@ -8,17 +8,18 @@ import { EmployeeForm } from "@/components/employees/EmployeeForm";
 export default async function EmployeeDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
-  const isNew = params.id === "new";
+  const isNew = id === "new";
 
   const employee = isNew
     ? null
     : await prisma.employee.findUnique({
-        where: { id: params.id },
+        where: { id },
         include: { position: true },
       });
 

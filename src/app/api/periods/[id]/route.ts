@@ -9,13 +9,14 @@ import { calculateDistributableBalance } from "@/lib/calculation-engine";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const period = await prisma.monthlyPeriod.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       season: true,
       entries: {
@@ -35,15 +36,16 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "periods:write")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const existing = await prisma.monthlyPeriod.findUnique({ where: { id: params.id } });
+  const existing = await prisma.monthlyPeriod.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (existing.status === "CLOSED") {
     return NextResponse.json({ error: "Period is closed and cannot be modified" }, { status: 422 });
@@ -63,7 +65,7 @@ export async function PATCH(
   updateData.distributableBalance = calculateDistributableBalance(openingBalance, collected);
 
   const updated = await prisma.monthlyPeriod.update({
-    where: { id: params.id },
+    where: { id },
     data: updateData,
     include: { season: true },
   });
@@ -72,8 +74,8 @@ export async function PATCH(
     userId: session.user.id,
     action: "UPDATE",
     entityType: "MonthlyPeriod",
-    entityId: params.id,
-    periodId: params.id,
+    entityId: id,
+    periodId: id,
     before: { collectedServiceCharge: existing.collectedServiceCharge },
     after: { collectedServiceCharge: updated.collectedServiceCharge },
   });

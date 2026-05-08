@@ -13,8 +13,9 @@ import {
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "periods:write")) {
@@ -22,7 +23,7 @@ export async function POST(
   }
 
   const period = await prisma.monthlyPeriod.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       season: true,
       entries: {
@@ -127,7 +128,7 @@ export async function POST(
 
   // Update the period totals
   await prisma.monthlyPeriod.update({
-    where: { id: params.id },
+    where: { id: id },
     data: {
       targetDistributionTotal: result.targetDistributionTotalCents,
     },
@@ -137,8 +138,8 @@ export async function POST(
     userId: session.user.id,
     action: "CALCULATE",
     entityType: "MonthlyPeriod",
-    entityId: params.id,
-    periodId: params.id,
+    entityId: id,
+    periodId: id,
     after: {
       targetDistributionTotal: result.targetDistributionTotalCents,
       waiterReferenceRate: result.waiterReferenceHourlyRateCents,

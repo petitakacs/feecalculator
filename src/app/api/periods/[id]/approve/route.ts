@@ -17,12 +17,13 @@ const actionToStatus: Record<string, PeriodStatus> = {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const period = await prisma.monthlyPeriod.findUnique({ where: { id: params.id } });
+  const period = await prisma.monthlyPeriod.findUnique({ where: { id } });
   if (!period) return NextResponse.json({ error: "Period not found" }, { status: 404 });
 
   const body = await req.json();
@@ -49,7 +50,7 @@ export async function POST(
   let approvedDistributionTotal = period.approvedDistributionTotal;
   if (parsed.data.action === "APPROVED") {
     const entries = await prisma.monthlyEmployeeEntry.findMany({
-      where: { periodId: params.id },
+      where: { periodId: id },
     });
     approvedDistributionTotal = entries.reduce((sum, e) => {
       const amount =
@@ -66,7 +67,7 @@ export async function POST(
     period.openingBalance + period.collectedServiceCharge - approvedDistributionTotal;
 
   await prisma.monthlyPeriod.update({
-    where: { id: params.id },
+    where: { id: id },
     data: {
       status: newStatus,
       approvedDistributionTotal:
@@ -82,7 +83,7 @@ export async function POST(
 
   await prisma.periodApproval.create({
     data: {
-      periodId: params.id,
+      periodId: id,
       userId: session.user.id,
       action: parsed.data.action,
       comment: parsed.data.comment,
@@ -93,8 +94,8 @@ export async function POST(
     userId: session.user.id,
     action: parsed.data.action,
     entityType: "MonthlyPeriod",
-    entityId: params.id,
-    periodId: params.id,
+    entityId: id,
+    periodId: id,
     before: { status: currentStatus },
     after: { status: newStatus },
   });

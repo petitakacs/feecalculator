@@ -8,8 +8,9 @@ import { MonthlyEmployeeEntry, MonthlyPeriod } from "@/types";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "periods:read")) {
@@ -17,7 +18,7 @@ export async function GET(
   }
 
   const period = await prisma.monthlyPeriod.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       season: true,
       entries: {
