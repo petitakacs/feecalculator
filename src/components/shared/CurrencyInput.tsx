@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 
 interface CurrencyInputProps {
-  value: number; // cents
-  onChange: (cents: number) => void;
+  value: number; // forint
+  onChange: (forint: number) => void;
   disabled?: boolean;
   className?: string;
   placeholder?: string;
@@ -15,12 +15,12 @@ export function CurrencyInput({
   onChange,
   disabled,
   className,
-  placeholder = "0.00",
+  placeholder = "0",
 }: CurrencyInputProps) {
-  const [inputValue, setInputValue] = useState((value / 100).toFixed(2));
+  const [inputValue, setInputValue] = useState(String(Math.round(value)));
 
   useEffect(() => {
-    setInputValue((value / 100).toFixed(2));
+    setInputValue(String(Math.round(value)));
   }, [value]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -28,17 +28,14 @@ export function CurrencyInput({
   };
 
   const handleBlur = () => {
-    const parsed = parseFloat(inputValue.replace(/,/g, ""));
-    const cents = isNaN(parsed) ? 0 : Math.round(parsed * 100);
-    onChange(cents);
-    setInputValue((cents / 100).toFixed(2));
+    const parsed = parseFloat(inputValue.replace(/[\s]/g, ""));
+    const forint = isNaN(parsed) ? 0 : Math.round(parsed);
+    onChange(forint);
+    setInputValue(String(forint));
   };
 
   return (
     <div className="relative">
-      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-        €
-      </span>
       <input
         type="text"
         value={inputValue}
@@ -46,8 +43,11 @@ export function CurrencyInput({
         onBlur={handleBlur}
         disabled={disabled}
         placeholder={placeholder}
-        className={`pl-6 pr-2 py-1.5 border border-gray-300 rounded-md text-sm text-right focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-500 ${className ?? ""}`}
+        className={`pr-8 px-2 py-1.5 border border-gray-300 rounded-md text-sm text-right focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-500 ${className ?? ""}`}
       />
+      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
+        Ft
+      </span>
     </div>
   );
 }

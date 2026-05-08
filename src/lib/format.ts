@@ -1,15 +1,14 @@
 /**
  * Format cents to currency string (e.g., €1,234.56)
  */
-export function formatCurrency(cents: number | string | null | undefined): string {
-  if (cents === null || cents === undefined) return "€0.00";
-  const amount = Number(cents) / 100;
-  return new Intl.NumberFormat("en-IE", {
+export function formatCurrency(forint: number | string | null | undefined): string {
+  if (forint === null || forint === undefined) return "0 Ft";
+  return new Intl.NumberFormat("hu-HU", {
     style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+    currency: "HUF",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Number(forint));
 }
 
 /**
@@ -29,13 +28,13 @@ export function formatHours(hours: number | string | null | undefined): string {
 }
 
 /**
- * Parse a currency string to cents integer
+ * Parse a currency string to forint integer
  */
 export function parseCurrencyToCents(value: string): number {
   const cleaned = value.replace(/[^0-9.-]/g, "");
   const amount = parseFloat(cleaned);
   if (isNaN(amount)) return 0;
-  return Math.round(amount * 100);
+  return Math.round(amount);
 }
 
 /**
@@ -60,17 +59,17 @@ export function formatDate(dateStr: string | Date | null | undefined): string {
 }
 
 /**
- * Format cents to EUR amount for input fields (e.g., 123456 → "1234.56")
+ * Format forint integer for input fields (e.g., 123456 → "123456")
  */
-export function centsToEuroString(cents: number): string {
-  return (cents / 100).toFixed(2);
+export function centsToEuroString(forint: number): string {
+  return String(Math.round(forint));
 }
 
 /**
- * Parse EUR string to cents (e.g., "1234.56" → 123456)
+ * Parse forint string to integer (e.g., "123456" → 123456)
  */
 export function euroStringToCents(value: string): number {
-  const amount = parseFloat(value.replace(/,/g, ""));
+  const amount = parseFloat(value.replace(/[\s,]/g, ""));
   if (isNaN(amount)) return 0;
-  return Math.round(amount * 100);
+  return Math.round(amount);
 }
