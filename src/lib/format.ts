@@ -1,9 +1,9 @@
 /**
  * Format cents to currency string (e.g., €1,234.56)
  */
-export function formatCurrency(cents: number | null | undefined): string {
+export function formatCurrency(cents: number | string | null | undefined): string {
   if (cents === null || cents === undefined) return "€0.00";
-  const amount = cents / 100;
+  const amount = Number(cents) / 100;
   return new Intl.NumberFormat("en-IE", {
     style: "currency",
     currency: "EUR",
@@ -15,17 +15,17 @@ export function formatCurrency(cents: number | null | undefined): string {
 /**
  * Format a decimal as percentage (e.g., 0.039 → "3.90%")
  */
-export function formatPercent(value: number | null | undefined): string {
+export function formatPercent(value: number | string | null | undefined): string {
   if (value === null || value === undefined) return "0.00%";
-  return `${(value * 100).toFixed(2)}%`;
+  return `${(Number(value) * 100).toFixed(2)}%`;
 }
 
 /**
  * Format a number with 2 decimal places
  */
-export function formatHours(hours: number | null | undefined): string {
+export function formatHours(hours: number | string | null | undefined): string {
   if (hours === null || hours === undefined) return "0.00";
-  return hours.toFixed(2);
+  return Number(hours).toFixed(2);
 }
 
 /**
