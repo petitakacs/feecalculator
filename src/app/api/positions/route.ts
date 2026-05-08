@@ -1,0 +1,41 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { CreatePositionSchema } from "@/lib/validators";
+import { hasPermission } from "@/lib/permissions";
+import { createAuditLog } from "@/lib/audit";
+
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const positions = await prisma.position.findMany({ orderBy: { name: "asc" } });
+  return NextResponse.json(positions);
+}
+
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(session.user.role, "positions:write")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const body = await req.json();
+  const parsed = CreatePositionSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.errors }, { status: 400 });
+  }
+
+  const position = await prisma.position.create({ data: parsed.data });
+
+  await createAuditLog({
+    userId: session.user.id,
+    action: "CREATE",
+    entityType: "Position",
+    entityId: position.id,
+    after: { name: position.name },
+  });
+
+  return NextResponse.json(position, { status: 201 });
+}
