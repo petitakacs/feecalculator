@@ -1,0 +1,222 @@
+// This is your Prisma schema file
+// All percentages stored as decimals (e.g., 0.039 for 3.9%)
+// All monetary amounts stored as integers (cents) to avoid float issues
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String           @id @default(cuid())
+  name         String
+  email        String           @unique
+  passwordHash String
+  role         Role             @default(STORE_MANAGER)
+  active       Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  auditLogs    AuditLog[]
+  approvals    PeriodApproval[]
+}
+
+enum Role {
+  ADMIN
+  BUSINESS_UNIT_LEAD
+  STORE_MANAGER
+  FINANCE_VIEWER
+  PAYROLL_EXPORT_USER
+}
+
+model Position {
+  id                       String               @id @default(cuid())
+  name                     String               @unique
+  multiplier               Decimal
+  eligibleForServiceCharge Boolean              @default(true)
+  defaultOvertimeRule      String?
+  minHourlyServiceCharge   Int?
+  maxHourlyServiceCharge   Int?
+  active                   Boolean              @default(true)
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+  employees                Employee[]
+  seasonPositionRules      SeasonPositionRule[]
+  monthlyEntries           MonthlyEmployeeEntry[]
+}
+
+model Employee {
+  id                       String                 @id @default(cuid())
+  name                     String
+  active                   Boolean                @default(true)
+  positionId               String
+  position                 Position               @relation(fields: [positionId], references: [id])
+  baseSalaryType           SalaryType
+  baseSalaryAmount         Int
+  eligibleForServiceCharge Boolean                @default(true)
+  startDate                DateTime
+  endDate                  DateTime?
+  location                 String?
+  notes                    String?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  monthlyEntries           MonthlyEmployeeEntry[]
+}
+
+enum SalaryType {
+  HOURLY
+  MONTHLY
+}
+
+model Season {
+  id                       String               @id @default(cuid())
+  name                     String
+  startDate                DateTime
+  endDate                  DateTime
+  referenceMode            ReferenceMode        @default(SALES_BASED)
+  manualWaiterTargetHourly Int?
+  minAllowedVariance       Decimal?
+  maxAllowedVariance       Decimal?
+  active                   Boolean              @default(true)
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+  periods                  MonthlyPeriod[]
+  positionRules            SeasonPositionRule[]
+}
+
+enum ReferenceMode {
+  SALES_BASED
+  MANUAL_TARGET
+  SALES_BASED_WITH_LIMITS
+}
+
+model SeasonPositionRule {
+  id         String   @id @default(cuid())
+  seasonId   String
+  season     Season   @relation(fields: [seasonId], references: [id])
+  positionId String
+  position   Position @relation(fields: [positionId], references: [id])
+  multiplier Decimal
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([seasonId, positionId])
+}
+
+model BusinessRule {
+  id                   String    @id @default(cuid())
+  effectiveFrom        DateTime
+  effectiveTo          DateTime?
+  serviceChargePercent Decimal
+  employeeContribution Decimal
+  notes                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model MonthlyPeriod {
+  id                        String                 @id @default(cuid())
+  month                     Int
+  year                      Int
+  seasonId                  String
+  season                    Season                 @relation(fields: [seasonId], references: [id])
+  openingBalance            Int                    @default(0)
+  collectedServiceCharge    Int                    @default(0)
+  distributableBalance      Int                    @default(0)
+  targetDistributionTotal   Int                    @default(0)
+  approvedDistributionTotal Int                    @default(0)
+  closingBalance            Int                    @default(0)
+  status                    PeriodStatus           @default(DRAFT)
+  notes                     String?
+  lockedAt                  DateTime?
+  lockedBy                  String?
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
+  entries                   MonthlyEmployeeEntry[]
+  approvals                 PeriodApproval[]
+  auditLogs                 AuditLog[]
+
+  @@unique([month, year])
+}
+
+enum PeriodStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  CLOSED
+}
+
+model MonthlyEmployeeEntry {
+  id                           String        @id @default(cuid())
+  periodId                     String
+  period                       MonthlyPeriod @relation(fields: [periodId], references: [id])
+  employeeId                   String
+  employee                     Employee      @relation(fields: [employeeId], references: [id])
+  positionId                   String
+  position                     Position      @relation(fields: [positionId], references: [id])
+  workedHours                  Decimal       @default(0)
+  overtimeHours                Decimal       @default(0)
+  netWaiterSales               Int?
+  calculatedGrossServiceCharge Int?
+  calculatedNetServiceCharge   Int?
+  targetNetHourlyServiceCharge Int?
+  targetServiceChargeAmount    Int?
+  bonus                        Int           @default(0)
+  overtimePayment              Int           @default(0)
+  manualCorrection             Int           @default(0)
+  manualCorrectionReason       String?
+  finalApprovedAmount          Int?
+  notes                        String?
+  overrideFlag                 Boolean       @default(false)
+  overrideReason               String?
+  createdAt                    DateTime      @default(now())
+  updatedAt                    DateTime      @updatedAt
+
+  @@unique([periodId, employeeId])
+}
+
+model PeriodApproval {
+  id        String         @id @default(cuid())
+  periodId  String
+  period    MonthlyPeriod  @relation(fields: [periodId], references: [id])
+  userId    String
+  user      User           @relation(fields: [userId], references: [id])
+  action    ApprovalAction
+  comment   String?
+  createdAt DateTime       @default(now())
+}
+
+enum ApprovalAction {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  REOPENED
+  CLOSED
+}
+
+model AuditLog {
+  id         String         @id @default(cuid())
+  periodId   String?
+  period     MonthlyPeriod? @relation(fields: [periodId], references: [id])
+  userId     String
+  user       User           @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime       @default(now())
+}
+
+model ImportLog {
+  id         String   @id @default(cuid())
+  periodId   String
+  fileName   String
+  rowCount   Int
+  errors     Json?
+  importedBy String
+  createdAt  DateTime @default(now())
+}

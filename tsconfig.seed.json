@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": false,
+    "target": "ES2017",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "outDir": "./.ts-node"
+  },
+  "include": ["prisma/seed.ts"],
+  "exclude": ["node_modules"]
+}
