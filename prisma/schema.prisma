@@ -7,6 +7,7 @@ generator client {
 
 datasource db {
   provider     = "mysql"
+  url          = env("DATABASE_URL")
   relationMode = "prisma"
 }
 
@@ -63,6 +64,8 @@ model Employee {
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
   monthlyEntries           MonthlyEmployeeEntry[]
+
+  @@index([positionId])
 }
 
 enum SalaryType {
@@ -103,6 +106,8 @@ model SeasonPositionRule {
   updatedAt  DateTime @updatedAt
 
   @@unique([seasonId, positionId])
+  @@index([seasonId])
+  @@index([positionId])
 }
 
 model BusinessRule {
@@ -139,6 +144,7 @@ model MonthlyPeriod {
   auditLogs                 AuditLog[]
 
   @@unique([month, year])
+  @@index([seasonId])
 }
 
 enum PeriodStatus {
@@ -175,6 +181,9 @@ model MonthlyEmployeeEntry {
   updatedAt                    DateTime      @updatedAt
 
   @@unique([periodId, employeeId])
+  @@index([periodId])
+  @@index([employeeId])
+  @@index([positionId])
 }
 
 model PeriodApproval {
@@ -186,6 +195,9 @@ model PeriodApproval {
   action    ApprovalAction
   comment   String?
   createdAt DateTime       @default(now())
+
+  @@index([periodId])
+  @@index([userId])
 }
 
 enum ApprovalAction {
@@ -208,6 +220,9 @@ model AuditLog {
   before     Json?
   after      Json?
   createdAt  DateTime       @default(now())
+
+  @@index([periodId])
+  @@index([userId])
 }
 
 model ImportLog {
