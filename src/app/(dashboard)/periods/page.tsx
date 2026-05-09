@@ -75,6 +75,12 @@ export default async function PeriodsPage() {
                       />
                     )}
                     <Link
+                      href={`/periods/${period.id}/allocation`}
+                      className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 font-medium"
+                    >
+                      Tábla →
+                    </Link>
+                    <Link
                       href={`/periods/${period.id}`}
                       className="text-blue-600 hover:text-blue-800 font-medium"
                     >

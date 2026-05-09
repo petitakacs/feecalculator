@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { MonthlyPeriod, MonthlyEmployeeEntry, Employee, Role } from "@/types";
 import { formatCurrency, formatHours } from "@/lib/format";
 import { showToast } from "@/components/ui/toaster";
@@ -15,17 +15,53 @@ interface AllocationTableProps {
   userRole: Role;
 }
 
+interface RowValues {
+  workedHours: string;
+  overtimeHours: string;
+  netWaiterSales: string;
+  bonus: string;
+  overtimePayment: string;
+  manualCorrection: string;
+  finalApprovedAmount: string;
+  notes: string;
+}
+
+function entryToRowValues(entry: MonthlyEmployeeEntry): RowValues {
+  return {
+    workedHours: String(entry.workedHours),
+    overtimeHours: String(entry.overtimeHours),
+    netWaiterSales: entry.netWaiterSales != null ? String(entry.netWaiterSales) : "",
+    bonus: String(entry.bonus),
+    overtimePayment: String(entry.overtimePayment),
+    manualCorrection: String(entry.manualCorrection),
+    finalApprovedAmount: entry.finalApprovedAmount != null ? String(entry.finalApprovedAmount) : "",
+    notes: entry.notes ?? "",
+  };
+}
+
 export function AllocationTable({
   period,
   initialEntries,
   availableEmployees,
   userRole,
 }: AllocationTableProps) {
-  const [entries, setEntries] = useState(initialEntries);
+  const [entries, setEntries] = useState<MonthlyEmployeeEntry[]>(initialEntries);
+  const [rowValues, setRowValues] = useState<Record<string, RowValues>>(() => {
+    const map: Record<string, RowValues> = {};
+    for (const e of initialEntries) {
+      map[e.id] = entryToRowValues(e);
+    }
+    return map;
+  });
+  const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
+  const [dirtyRows, setDirtyRows] = useState<Set<string>>(new Set());
   const [calculating, setCalculating] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<Record<string, string>>({});
+  const [addingAll, setAddingAll] = useState(false);
+
+  // Track latest row values via ref so blur handler sees current values
+  const rowValuesRef = useRef(rowValues);
+  rowValuesRef.current = rowValues;
 
   const isLocked =
     period.status === "CLOSED" || period.status === "APPROVED";
@@ -34,6 +70,107 @@ export function AllocationTable({
     userRole === "ADMIN" || userRole === "BUSINESS_UNIT_LEAD";
   const canSubmit = hasPermission(userRole, "periods:submit");
 
+  const editable = !isLocked && canWrite;
+
+  // ---- Derived summary numbers ----
+  const totalApproved = entries.reduce((s, e) => s + (e.finalApprovedAmount ?? 0), 0);
+  const totalTarget = entries.reduce(
+    (s, e) =>
+      s +
+      (e.targetServiceChargeAmount ?? 0) +
+      e.bonus +
+      e.overtimePayment +
+      e.manualCorrection,
+    0
+  );
+  const closingBalance = period.distributableBalance - totalApproved;
+
+  // ---- Field update helper ----
+  const updateField = useCallback(
+    (entryId: string, field: keyof RowValues, value: string) => {
+      setRowValues((prev) => ({
+        ...prev,
+        [entryId]: { ...prev[entryId], [field]: value },
+      }));
+      setDirtyRows((prev) => new Set(prev).add(entryId));
+    },
+    []
+  );
+
+  // ---- Auto-save on blur ----
+  const handleBlurSave = useCallback(
+    async (entry: MonthlyEmployeeEntry) => {
+      const vals = rowValuesRef.current[entry.id];
+      if (!vals) return;
+
+      setSavingRows((prev) => new Set(prev).add(entry.id));
+      setDirtyRows((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
+
+      const updateData: Record<string, unknown> = {
+        workedHours: parseFloat(vals.workedHours) || 0,
+        overtimeHours: parseFloat(vals.overtimeHours) || 0,
+        bonus: Math.round(parseFloat(vals.bonus) || 0),
+        overtimePayment: Math.round(parseFloat(vals.overtimePayment) || 0),
+        manualCorrection: Math.round(parseFloat(vals.manualCorrection) || 0),
+        notes: vals.notes || null,
+      };
+
+      if (vals.netWaiterSales !== "") {
+        updateData.netWaiterSales = Math.round(parseFloat(vals.netWaiterSales) || 0);
+      }
+
+      if (vals.finalApprovedAmount !== "") {
+        const approvedAmt = Math.round(parseFloat(vals.finalApprovedAmount) || 0);
+        updateData.finalApprovedAmount = approvedAmt;
+        const computedTarget =
+          (entry.targetServiceChargeAmount ?? 0) +
+          Math.round(parseFloat(vals.bonus) || 0) +
+          Math.round(parseFloat(vals.overtimePayment) || 0) +
+          Math.round(parseFloat(vals.manualCorrection) || 0);
+        if (approvedAmt !== computedTarget) {
+          updateData.overrideFlag = true;
+        }
+      }
+
+      try {
+        const res = await fetch(`/api/periods/${period.id}/entries`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entryId: entry.id, ...updateData }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          showToast(err.error ?? "Mentés sikertelen", "error");
+          setDirtyRows((prev) => new Set(prev).add(entry.id));
+          return;
+        }
+
+        const updated: MonthlyEmployeeEntry = await res.json();
+        setEntries((prev) => prev.map((e) => (e.id === entry.id ? updated : e)));
+        setRowValues((prev) => ({
+          ...prev,
+          [entry.id]: entryToRowValues(updated),
+        }));
+      } catch {
+        showToast("Hálózati hiba", "error");
+        setDirtyRows((prev) => new Set(prev).add(entry.id));
+      } finally {
+        setSavingRows((prev) => {
+          const next = new Set(prev);
+          next.delete(entry.id);
+          return next;
+        });
+      }
+    },
+    [period.id]
+  );
+
+  // ---- Calculate ----
   const handleCalculate = async () => {
     setCalculating(true);
     try {
@@ -42,31 +179,34 @@ export function AllocationTable({
       });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Calculation failed", "error");
+        showToast(err.error ?? "Számítás sikertelen", "error");
         return;
       }
       const data = await res.json();
       showToast(
-        `Calculation complete. Waiter reference rate: ${formatCurrency(data.waiterReferenceHourlyRateCents)}/hr`,
+        `Számítás kész. Pincér referencia díj: ${formatCurrency(data.waiterReferenceHourlyRateCents)}/óra`,
         "success"
       );
-      // Refresh entries
       const entriesRes = await fetch(`/api/periods/${period.id}/entries`);
       if (entriesRes.ok) {
-        const updatedEntries = await entriesRes.json();
+        const updatedEntries: MonthlyEmployeeEntry[] = await entriesRes.json();
         setEntries(updatedEntries);
+        const map: Record<string, RowValues> = {};
+        for (const e of updatedEntries) {
+          map[e.id] = entryToRowValues(e);
+        }
+        setRowValues(map);
+        setDirtyRows(new Set());
       }
     } catch {
-      showToast("Network error", "error");
+      showToast("Hálózati hiba", "error");
     } finally {
       setCalculating(false);
     }
   };
 
-  const handleAction = async (
-    action: string,
-    comment?: string
-  ) => {
+  // ---- Workflow actions ----
+  const handleAction = async (action: string, comment?: string) => {
     setActionLoading(true);
     try {
       const res = await fetch(`/api/periods/${period.id}/approve`, {
@@ -76,18 +216,19 @@ export function AllocationTable({
       });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Action failed", "error");
+        showToast(err.error ?? "Művelet sikertelen", "error");
         return;
       }
-      showToast(`Action ${action} completed`, "success");
+      showToast(`${action} sikeresen végrehajtva`, "success");
       window.location.reload();
     } catch {
-      showToast("Network error", "error");
+      showToast("Hálózati hiba", "error");
     } finally {
       setActionLoading(false);
     }
   };
 
+  // ---- Add single employee ----
   const handleAddEmployee = async (employeeId: string) => {
     const res = await fetch(`/api/periods/${period.id}/entries`, {
       method: "POST",
@@ -96,101 +237,143 @@ export function AllocationTable({
     });
     if (!res.ok) {
       const err = await res.json();
-      showToast(err.error ?? "Failed to add employee", "error");
+      showToast(err.error ?? "Hozzáadás sikertelen", "error");
       return;
     }
-    const newEntry = await res.json();
+    const newEntry: MonthlyEmployeeEntry = await res.json();
     setEntries((prev) => {
       const exists = prev.find((e) => e.id === newEntry.id);
       if (exists) return prev;
       return [...prev, newEntry];
     });
-    showToast("Employee added", "success");
+    setRowValues((prev) => ({
+      ...prev,
+      [newEntry.id]: entryToRowValues(newEntry),
+    }));
+    showToast("Dolgozó hozzáadva", "success");
   };
 
-  const startEdit = (entry: MonthlyEmployeeEntry) => {
-    setEditingEntryId(entry.id);
-    setEditValues({
-      workedHours: String(entry.workedHours),
-      overtimeHours: String(entry.overtimeHours),
-      netWaiterSales: entry.netWaiterSales != null ? String(entry.netWaiterSales) : "",
-      bonus: String(entry.bonus),
-      overtimePayment: String(entry.overtimePayment),
-      manualCorrection: String(entry.manualCorrection),
-      finalApprovedAmount: entry.finalApprovedAmount != null ? String(entry.finalApprovedAmount) : "",
-      notes: entry.notes ?? "",
-    });
-  };
-
-  const saveEdit = async (entry: MonthlyEmployeeEntry) => {
-    const updateData: Record<string, unknown> = {
-      workedHours: parseFloat(editValues.workedHours) || 0,
-      overtimeHours: parseFloat(editValues.overtimeHours) || 0,
-      bonus: Math.round(parseFloat(editValues.bonus) || 0),
-      overtimePayment: Math.round(parseFloat(editValues.overtimePayment) || 0),
-      manualCorrection: Math.round(parseFloat(editValues.manualCorrection) || 0),
-      notes: editValues.notes || null,
-    };
-
-    if (editValues.netWaiterSales !== "") {
-      updateData.netWaiterSales = Math.round(parseFloat(editValues.netWaiterSales) || 0);
-    }
-
-    if (editValues.finalApprovedAmount !== "") {
-      updateData.finalApprovedAmount = Math.round(parseFloat(editValues.finalApprovedAmount) || 0);
-      const targetAmount =
-        (entry.targetServiceChargeAmount ?? 0) +
-        Math.round(parseFloat(editValues.bonus) || 0) +
-        Math.round(parseFloat(editValues.overtimePayment) || 0) +
-        Math.round(parseFloat(editValues.manualCorrection) || 0);
-      if ((updateData.finalApprovedAmount as number) !== targetAmount) {
-        updateData.overrideFlag = true;
+  // ---- Add ALL active employees at once ----
+  const handleAddAllEmployees = async () => {
+    if (addableEmployees.length === 0) return;
+    setAddingAll(true);
+    try {
+      const employeeIds = addableEmployees.map((e) => e.id);
+      const res = await fetch(`/api/periods/${period.id}/entries/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeIds }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast(err.error ?? "Tömeges hozzáadás sikertelen", "error");
+        return;
       }
+      const result = await res.json();
+      // Refresh entries list
+      const entriesRes = await fetch(`/api/periods/${period.id}/entries`);
+      if (entriesRes.ok) {
+        const updatedEntries: MonthlyEmployeeEntry[] = await entriesRes.json();
+        setEntries(updatedEntries);
+        const map: Record<string, RowValues> = {};
+        for (const e of updatedEntries) {
+          map[e.id] = entryToRowValues(e);
+        }
+        setRowValues(map);
+      }
+      showToast(
+        `${result.created} dolgozó hozzáadva, ${result.skipped} már szerepelt`,
+        "success"
+      );
+    } catch {
+      showToast("Hálózati hiba", "error");
+    } finally {
+      setAddingAll(false);
     }
-
-    const res = await fetch(`/api/periods/${period.id}/entries`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entryId: entry.id, ...updateData }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      showToast(err.error ?? "Save failed", "error");
-      return;
-    }
-
-    const updated = await res.json();
-    setEntries((prev) => prev.map((e) => (e.id === entry.id ? updated : e)));
-    setEditingEntryId(null);
-    showToast("Entry saved", "success");
   };
 
   const addableEmployees = availableEmployees.filter(
     (emp) => !entries.some((e) => e.employeeId === emp.id)
   );
 
+  // ---- Input cell helper ----
+  const inputCell = (
+    entry: MonthlyEmployeeEntry,
+    field: keyof RowValues,
+    width: string,
+    type: "number" | "text" = "number",
+    placeholder?: string
+  ) => {
+    const vals = rowValues[entry.id];
+    const value = vals ? vals[field] : "";
+    if (editable) {
+      return (
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => updateField(entry.id, field, e.target.value)}
+          onBlur={() => handleBlurSave(entry)}
+          placeholder={placeholder}
+          className={`${width} text-right border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white`}
+        />
+      );
+    }
+    // read-only display
+    if (type === "text") return <span>{value}</span>;
+    if (value === "") return <span className="text-gray-300">-</span>;
+    return <span>{value}</span>;
+  };
+
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 bg-white rounded-lg shadow p-4">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-500">Balance:</span>
-          <span
-            className={`font-bold ${period.distributableBalance < 0 ? "text-red-600" : "text-green-600"}`}
-          >
+      {/* ── Summary Bar ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+          <div className="text-xs text-blue-600 font-medium uppercase tracking-wide">Felosztható egyenleg</div>
+          <div className={`text-xl font-bold mt-1 ${period.distributableBalance < 0 ? "text-red-600" : "text-blue-700"}`}>
             {formatCurrency(period.distributableBalance)}
-          </span>
-          <span className="text-gray-300">|</span>
-          <span className="text-gray-500">Target:</span>
-          <span className="font-bold">{formatCurrency(period.targetDistributionTotal)}</span>
+          </div>
         </div>
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+          <div className="text-xs text-green-600 font-medium uppercase tracking-wide">Cél szétosztás</div>
+          <div className="text-xl font-bold mt-1 text-green-700">
+            {formatCurrency(totalTarget)}
+          </div>
+        </div>
+        <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3">
+          <div className="text-xs text-purple-600 font-medium uppercase tracking-wide">Jóváhagyott összeg</div>
+          <div className="text-xl font-bold mt-1 text-purple-700">
+            {formatCurrency(totalApproved)}
+          </div>
+        </div>
+        <div className={`${closingBalance < 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"} border rounded-lg px-4 py-3`}>
+          <div className={`text-xs font-medium uppercase tracking-wide ${closingBalance < 0 ? "text-red-600" : "text-green-600"}`}>
+            Várható záróegyenleg
+          </div>
+          <div className={`text-xl font-bold mt-1 ${closingBalance < 0 ? "text-red-700" : "text-green-700"}`}>
+            {formatCurrency(closingBalance)}
+          </div>
+        </div>
+      </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          {!isLocked && canWrite && (
-            <>
-              {/* Add employee dropdown */}
-              {addableEmployees.length > 0 && (
+      {/* ── Toolbar ── */}
+      <div className="flex flex-wrap items-center gap-3 bg-white rounded-lg shadow p-4">
+        {editable && (
+          <>
+            {addableEmployees.length > 0 && (
+              <>
+                {/* One-click add all */}
+                <button
+                  onClick={handleAddAllEmployees}
+                  disabled={addingAll}
+                  className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:opacity-50 font-medium"
+                >
+                  {addingAll
+                    ? "Hozzáadás..."
+                    : `Összes hozzáadása (${addableEmployees.length} dolgozó)`}
+                </button>
+
+                {/* Individual add dropdown */}
                 <select
                   onChange={(e) => {
                     if (e.target.value) {
@@ -200,37 +383,38 @@ export function AllocationTable({
                   }}
                   className="text-sm border border-gray-300 rounded-md px-2 py-1.5"
                 >
-                  <option value="">+ Add Employee</option>
+                  <option value="">+ Egyéni hozzáadás</option>
                   {addableEmployees.map((emp) => (
                     <option key={emp.id} value={emp.id}>
                       {emp.name} ({emp.position?.name})
                     </option>
                   ))}
                 </select>
-              )}
+              </>
+            )}
 
-              <ImportModal periodId={period.id} />
+            <ImportModal periodId={period.id} />
 
-              <button
-                onClick={handleCalculate}
-                disabled={calculating}
-                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {calculating ? "Calculating..." : "Calculate"}
-              </button>
-            </>
-          )}
+            <button
+              onClick={handleCalculate}
+              disabled={calculating}
+              className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {calculating ? "Számítás..." : "Számítás"}
+            </button>
+          </>
+        )}
 
+        <div className="ml-auto flex items-center gap-2">
           <ExportButton periodId={period.id} />
 
-          {/* Status actions */}
           {!isLocked && period.status === "DRAFT" && canSubmit && (
             <button
               onClick={() => handleAction("SUBMITTED")}
               disabled={actionLoading}
               className="px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-md hover:bg-yellow-700 disabled:opacity-50"
             >
-              Submit for Approval
+              Jóváhagyásra küld
             </button>
           )}
           {period.status === "PENDING_APPROVAL" && canApprove && (
@@ -240,17 +424,17 @@ export function AllocationTable({
                 disabled={actionLoading}
                 className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 disabled:opacity-50"
               >
-                Approve
+                Jóváhagy
               </button>
               <button
                 onClick={() => {
-                  const comment = prompt("Reason for rejection:");
+                  const comment = prompt("Visszaküldés oka:");
                   if (comment !== null) handleAction("REJECTED", comment);
                 }}
                 disabled={actionLoading}
                 className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 disabled:opacity-50"
               >
-                Reject
+                Visszaküld
               </button>
             </>
           )}
@@ -260,247 +444,288 @@ export function AllocationTable({
               disabled={actionLoading}
               className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
-              Close Period
+              Periódus lezárása
             </button>
           )}
         </div>
       </div>
 
-      {/* Table */}
+      {/* ── Table ── */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full text-xs whitespace-nowrap">
-          <thead className="bg-gray-50 border-b sticky top-0">
+          <thead className="sticky top-0 z-10">
+            {/* Column group headers */}
             <tr>
-              <th className="px-3 py-2 text-left font-medium text-gray-500 sticky left-0 bg-gray-50 z-10">Employee</th>
-              <th className="px-3 py-2 text-left font-medium text-gray-500">Position</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Hours</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">OT Hrs</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Waiter Sales</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Gross SC</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Net SC</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Target/hr</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Target SC</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Bonus</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">OT Pay</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Correction</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Final Target</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-500">Approved</th>
-              <th className="px-3 py-2 text-center font-medium text-gray-500">Override</th>
-              <th className="px-3 py-2 text-left font-medium text-gray-500">Notes</th>
-              {!isLocked && canWrite && (
-                <th className="px-3 py-2"></th>
-              )}
+              {/* sticky name col */}
+              <th
+                rowSpan={2}
+                className="px-3 py-2 text-left font-semibold text-gray-700 bg-gray-100 border-b border-r border-gray-200 sticky left-0 z-20"
+              >
+                Dolgozó
+              </th>
+              <th
+                rowSpan={2}
+                className="px-3 py-2 text-left font-semibold text-gray-700 bg-gray-100 border-b border-r border-gray-200"
+              >
+                Pozíció
+              </th>
+              {/* Group 1: Bevitel */}
+              <th
+                colSpan={3}
+                className="px-3 py-1 text-center text-xs font-bold text-blue-700 bg-blue-100 border-b border-blue-200"
+              >
+                Bevitel
+              </th>
+              {/* Group 2: Számított */}
+              <th
+                colSpan={2}
+                className="px-3 py-1 text-center text-xs font-bold text-gray-700 bg-gray-200 border-b border-gray-300"
+              >
+                Számított
+              </th>
+              {/* Group 3: Célértékek */}
+              <th
+                colSpan={2}
+                className="px-3 py-1 text-center text-xs font-bold text-green-700 bg-green-100 border-b border-green-200"
+              >
+                Célértékek
+              </th>
+              {/* Group 4: Kiegészítők */}
+              <th
+                colSpan={3}
+                className="px-3 py-1 text-center text-xs font-bold text-yellow-800 bg-yellow-100 border-b border-yellow-200"
+              >
+                Kiegészítők
+              </th>
+              {/* Group 5: Összesítés */}
+              <th
+                colSpan={2}
+                className="px-3 py-1 text-center text-xs font-bold text-purple-700 bg-purple-100 border-b border-purple-200"
+              >
+                Összesítés
+              </th>
+              {/* Notes / status */}
+              <th
+                rowSpan={2}
+                className="px-3 py-2 text-left font-semibold text-gray-600 bg-gray-100 border-b border-gray-200"
+              >
+                Megjegyzés
+              </th>
+              <th
+                rowSpan={2}
+                className="px-3 py-2 bg-gray-100 border-b border-gray-200 text-center text-gray-600 font-semibold"
+              >
+                Állapot
+              </th>
+            </tr>
+            <tr>
+              {/* Bevitel sub-cols */}
+              <th className="px-3 py-1.5 text-right font-medium text-blue-600 bg-blue-50 border-b border-blue-100">
+                Ledolg. óra
+              </th>
+              <th className="px-3 py-1.5 text-right font-medium text-blue-600 bg-blue-50 border-b border-blue-100">
+                Túlóra
+              </th>
+              <th className="px-3 py-1.5 text-right font-medium text-blue-600 bg-blue-50 border-b border-blue-100 border-r border-blue-100">
+                Pincér eladás nettó
+              </th>
+              {/* Számított sub-cols */}
+              <th className="px-3 py-1.5 text-right font-medium text-gray-600 bg-gray-100 border-b border-gray-200">
+                Bruttó SZD
+              </th>
+              <th className="px-3 py-1.5 text-right font-medium text-gray-600 bg-gray-100 border-b border-gray-200 border-r border-gray-200">
+                Nettó SZD
+              </th>
+              {/* Célértékek sub-cols */}
+              <th className="px-3 py-1.5 text-right font-medium text-green-600 bg-green-50 border-b border-green-100">
+                Célóradíj
+              </th>
+              <th className="px-3 py-1.5 text-right font-medium text-green-600 bg-green-50 border-b border-green-100 border-r border-green-100">
+                Cél SZD
+              </th>
+              {/* Kiegészítők sub-cols */}
+              <th className="px-3 py-1.5 text-right font-medium text-yellow-700 bg-yellow-50 border-b border-yellow-100">
+                Prémium
+              </th>
+              <th className="px-3 py-1.5 text-right font-medium text-yellow-700 bg-yellow-50 border-b border-yellow-100">
+                Túlóra kif.
+              </th>
+              <th className="px-3 py-1.5 text-right font-medium text-yellow-700 bg-yellow-50 border-b border-yellow-100 border-r border-yellow-100">
+                Korrekció
+              </th>
+              {/* Összesítés sub-cols */}
+              <th className="px-3 py-1.5 text-right font-medium text-purple-600 bg-purple-50 border-b border-purple-100">
+                Végső cél
+              </th>
+              <th className="px-3 py-1.5 text-right font-medium text-purple-600 bg-purple-50 border-b border-purple-100 border-r border-purple-100">
+                Jóváhagyott
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+
+          <tbody className="divide-y divide-gray-100">
             {entries.map((entry) => {
-              const isEditing = editingEntryId === entry.id;
+              const isSaving = savingRows.has(entry.id);
+              const isDirty = dirtyRows.has(entry.id);
               const finalTarget =
                 (entry.targetServiceChargeAmount ?? 0) +
                 entry.bonus +
                 entry.overtimePayment +
                 entry.manualCorrection;
+              const isOverride = entry.overrideFlag;
 
               return (
                 <tr
                   key={entry.id}
                   className={`${
-                    entry.overrideFlag ? "bg-yellow-50" : "hover:bg-gray-50"
-                  }`}
+                    isOverride
+                      ? "bg-yellow-50"
+                      : isDirty
+                      ? "bg-amber-50"
+                      : "hover:bg-gray-50"
+                  } ${isDirty ? "border-l-4 border-l-amber-400" : ""}`}
                 >
-                  <td className="px-3 py-2 font-medium sticky left-0 bg-inherit z-10">
+                  {/* Sticky name */}
+                  <td className="px-3 py-2 font-medium sticky left-0 bg-inherit z-10 border-r border-gray-100">
                     {entry.employee?.name ?? entry.employeeId}
                   </td>
-                  <td className="px-3 py-2 text-gray-500">
+                  <td className="px-3 py-2 text-gray-500 border-r border-gray-100">
                     {entry.position?.name ?? entry.positionId}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {isEditing ? (
-                      <input
-                        type="number"
-                        value={editValues.workedHours}
-                        onChange={(e) => setEditValues((v) => ({ ...v, workedHours: e.target.value }))}
-                        className="w-16 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
-                      />
-                    ) : (
-                      formatHours(entry.workedHours)
-                    )}
+
+                  {/* Bevitel */}
+                  <td className="px-2 py-1.5 text-right bg-blue-50/30">
+                    {inputCell(entry, "workedHours", "w-16")}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {isEditing ? (
-                      <input
-                        type="number"
-                        value={editValues.overtimeHours}
-                        onChange={(e) => setEditValues((v) => ({ ...v, overtimeHours: e.target.value }))}
-                        className="w-16 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
-                      />
-                    ) : (
-                      formatHours(entry.overtimeHours)
-                    )}
+                  <td className="px-2 py-1.5 text-right bg-blue-50/30">
+                    {inputCell(entry, "overtimeHours", "w-16")}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {isEditing ? (
-                      <input
-                        type="number"
-                        value={editValues.netWaiterSales}
-                        onChange={(e) => setEditValues((v) => ({ ...v, netWaiterSales: e.target.value }))}
-                        placeholder="0.00"
-                        className="w-20 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
-                      />
-                    ) : entry.netWaiterSales != null ? (
-                      formatCurrency(entry.netWaiterSales)
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
+                  <td className="px-2 py-1.5 text-right bg-blue-50/30 border-r border-blue-100">
+                    {inputCell(entry, "netWaiterSales", "w-20", "number", "0")}
                   </td>
-                  <td className="px-3 py-2 text-right">
+
+                  {/* Számított */}
+                  <td className="px-3 py-1.5 text-right text-gray-600">
                     {entry.calculatedGrossServiceCharge != null
                       ? formatCurrency(entry.calculatedGrossServiceCharge)
                       : <span className="text-gray-300">-</span>}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-1.5 text-right text-gray-600 border-r border-gray-100">
                     {entry.calculatedNetServiceCharge != null
                       ? formatCurrency(entry.calculatedNetServiceCharge)
                       : <span className="text-gray-300">-</span>}
                   </td>
-                  <td className="px-3 py-2 text-right">
+
+                  {/* Célértékek */}
+                  <td className="px-3 py-1.5 text-right text-green-700">
                     {entry.targetNetHourlyServiceCharge != null
                       ? formatCurrency(entry.targetNetHourlyServiceCharge)
                       : <span className="text-gray-300">-</span>}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-1.5 text-right font-medium text-green-700 border-r border-green-100">
                     {entry.targetServiceChargeAmount != null
                       ? formatCurrency(entry.targetServiceChargeAmount)
                       : <span className="text-gray-300">-</span>}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {isEditing ? (
-                      <input
-                        type="number"
-                        value={editValues.bonus}
-                        onChange={(e) => setEditValues((v) => ({ ...v, bonus: e.target.value }))}
-                        className="w-16 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
-                      />
-                    ) : (
-                      formatCurrency(entry.bonus)
-                    )}
+
+                  {/* Kiegészítők */}
+                  <td className="px-2 py-1.5 text-right bg-yellow-50/40">
+                    {inputCell(entry, "bonus", "w-16")}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {isEditing ? (
-                      <input
-                        type="number"
-                        value={editValues.overtimePayment}
-                        onChange={(e) => setEditValues((v) => ({ ...v, overtimePayment: e.target.value }))}
-                        className="w-16 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
-                      />
-                    ) : (
-                      formatCurrency(entry.overtimePayment)
-                    )}
+                  <td className="px-2 py-1.5 text-right bg-yellow-50/40">
+                    {inputCell(entry, "overtimePayment", "w-16")}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {isEditing ? (
-                      <input
-                        type="number"
-                        value={editValues.manualCorrection}
-                        onChange={(e) => setEditValues((v) => ({ ...v, manualCorrection: e.target.value }))}
-                        className="w-16 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
-                      />
-                    ) : (
-                      formatCurrency(entry.manualCorrection)
-                    )}
+                  <td className="px-2 py-1.5 text-right bg-yellow-50/40 border-r border-yellow-100">
+                    {inputCell(entry, "manualCorrection", "w-16")}
                   </td>
-                  <td className="px-3 py-2 text-right font-medium">
+
+                  {/* Összesítés */}
+                  <td className="px-3 py-1.5 text-right font-semibold text-purple-700">
                     {formatCurrency(finalTarget)}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {isEditing ? (
-                      <input
-                        type="number"
-                        value={editValues.finalApprovedAmount}
-                        onChange={(e) => setEditValues((v) => ({ ...v, finalApprovedAmount: e.target.value }))}
-                        placeholder="Same as target"
-                        className="w-20 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
-                      />
-                    ) : entry.finalApprovedAmount != null ? (
-                      formatCurrency(entry.finalApprovedAmount)
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
+                  <td className="px-2 py-1.5 text-right bg-purple-50/30 border-r border-purple-100">
+                    {inputCell(entry, "finalApprovedAmount", "w-20", "number", "= cél")}
                   </td>
-                  <td className="px-3 py-2 text-center">
-                    {entry.overrideFlag && (
-                      <span className="px-1.5 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-medium">
-                        YES
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">
-                    {isEditing ? (
+
+                  {/* Notes */}
+                  <td className="px-2 py-1.5 text-gray-500 max-w-[120px] truncate">
+                    {editable ? (
                       <input
                         type="text"
-                        value={editValues.notes}
-                        onChange={(e) => setEditValues((v) => ({ ...v, notes: e.target.value }))}
-                        className="w-32 border border-gray-300 rounded px-1 py-0.5 text-xs"
+                        value={rowValues[entry.id]?.notes ?? ""}
+                        onChange={(e) => updateField(entry.id, "notes", e.target.value)}
+                        onBlur={() => handleBlurSave(entry)}
+                        className="w-28 border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                       />
                     ) : (
                       entry.notes ?? ""
                     )}
                   </td>
-                  {!isLocked && canWrite && (
-                    <td className="px-3 py-2">
-                      {isEditing ? (
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => saveEdit(entry)}
-                            className="px-2 py-0.5 bg-green-600 text-white rounded text-xs hover:bg-green-700"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => setEditingEntryId(null)}
-                            className="px-2 py-0.5 bg-gray-400 text-white rounded text-xs hover:bg-gray-500"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => startEdit(entry)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium"
-                        >
-                          Edit
-                        </button>
-                      )}
-                    </td>
-                  )}
+
+                  {/* Status column: saving indicator + override badge */}
+                  <td className="px-2 py-1.5 text-center min-w-[80px]">
+                    {isSaving ? (
+                      <span className="text-xs text-blue-500 italic">mentés...</span>
+                    ) : isOverride ? (
+                      <span className="px-1.5 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-medium">
+                        Felülbírálat
+                      </span>
+                    ) : null}
+                  </td>
                 </tr>
               );
             })}
+
             {entries.length === 0 && (
               <tr>
-                <td colSpan={17} className="px-4 py-8 text-center text-gray-500">
-                  No entries yet. Add employees or import a file.
+                <td colSpan={16} className="px-4 py-10 text-center text-gray-400">
+                  <div className="text-base font-medium mb-1">Még nincsenek bejegyzések</div>
+                  <div className="text-sm">
+                    Kattints az &ldquo;Összes hozzáadása&rdquo; gombra, vagy adj hozzá dolgozókat egyenként.
+                  </div>
                 </td>
               </tr>
             )}
           </tbody>
+
           {entries.length > 0 && (
-            <tfoot className="bg-gray-50 border-t font-medium text-xs">
+            <tfoot className="bg-gray-50 border-t-2 border-gray-200 font-semibold text-xs">
               <tr>
-                <td className="px-3 py-2 sticky left-0 bg-gray-50" colSpan={8}>Totals</td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-2 sticky left-0 bg-gray-50 border-r border-gray-200" colSpan={2}>
+                  Összesítés
+                </td>
+                {/* Bevitel totals */}
+                <td className="px-3 py-2 text-right text-blue-700">
+                  {formatHours(entries.reduce((s, e) => s + e.workedHours, 0))}
+                </td>
+                <td className="px-3 py-2 text-right text-blue-700">
+                  {formatHours(entries.reduce((s, e) => s + e.overtimeHours, 0))}
+                </td>
+                <td className="px-3 py-2 border-r border-blue-100"></td>
+                {/* Számított totals */}
+                <td className="px-3 py-2 text-right text-gray-600">
+                  {formatCurrency(entries.reduce((s, e) => s + (e.calculatedGrossServiceCharge ?? 0), 0))}
+                </td>
+                <td className="px-3 py-2 text-right text-gray-600 border-r border-gray-200">
+                  {formatCurrency(entries.reduce((s, e) => s + (e.calculatedNetServiceCharge ?? 0), 0))}
+                </td>
+                {/* Célértékek totals */}
+                <td className="px-3 py-2"></td>
+                <td className="px-3 py-2 text-right text-green-700 border-r border-green-100">
                   {formatCurrency(entries.reduce((s, e) => s + (e.targetServiceChargeAmount ?? 0), 0))}
                 </td>
-                <td className="px-3 py-2 text-right">
+                {/* Kiegészítők totals */}
+                <td className="px-3 py-2 text-right text-yellow-700">
                   {formatCurrency(entries.reduce((s, e) => s + e.bonus, 0))}
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-2 text-right text-yellow-700">
                   {formatCurrency(entries.reduce((s, e) => s + e.overtimePayment, 0))}
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-2 text-right text-yellow-700 border-r border-yellow-100">
                   {formatCurrency(entries.reduce((s, e) => s + e.manualCorrection, 0))}
                 </td>
-                <td className="px-3 py-2 text-right">
+                {/* Összesítés totals */}
+                <td className="px-3 py-2 text-right text-purple-700">
                   {formatCurrency(
                     entries.reduce(
                       (s, e) =>
@@ -513,10 +738,10 @@ export function AllocationTable({
                     )
                   )}
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-2 text-right text-purple-700 border-r border-purple-100">
                   {formatCurrency(entries.reduce((s, e) => s + (e.finalApprovedAmount ?? 0), 0))}
                 </td>
-                <td colSpan={3} />
+                <td colSpan={2} />
               </tr>
             </tfoot>
           )}
@@ -525,7 +750,7 @@ export function AllocationTable({
 
       {isLocked && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
-          This period is {period.status.toLowerCase()}. No modifications are allowed.
+          Ez a periódus {period.status === "CLOSED" ? "lezárva" : "jóváhagyva"} — módosítás nem lehetséges.
         </div>
       )}
     </div>

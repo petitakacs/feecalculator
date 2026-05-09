@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { formatPeriod } from "@/lib/format";
+import { formatPeriod, formatCurrency } from "@/lib/format";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { AllocationTable } from "@/components/allocation/AllocationTable";
 
@@ -38,17 +38,25 @@ export default async function AllocationPage({
     orderBy: { name: "asc" },
   });
 
+  const periodLabel = formatPeriod(period.month, period.year);
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Link href={`/periods/${id}`} className="text-gray-500 hover:text-gray-700">
-          ← Period Detail
-        </Link>
-        <span className="text-gray-300">/</span>
-        <h1 className="text-xl font-bold text-gray-900">
-          {formatPeriod(period.month, period.year)} — Allocation
-        </h1>
-        <StatusBadge status={period.status} />
+      {/* Breadcrumb + title */}
+      <div>
+        <nav className="flex items-center gap-1.5 text-sm text-gray-500 mb-2">
+          <Link href="/periods" className="hover:text-gray-700">Periódusok</Link>
+          <span className="text-gray-300">/</span>
+          <Link href={`/periods/${id}`} className="hover:text-gray-700">{periodLabel}</Link>
+          <span className="text-gray-300">/</span>
+          <span className="text-gray-700 font-medium">Elosztási tábla</span>
+        </nav>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold text-gray-900">
+            {periodLabel} — Elosztási tábla
+          </h1>
+          <StatusBadge status={period.status} />
+        </div>
       </div>
 
       <AllocationTable
