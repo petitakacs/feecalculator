@@ -15,6 +15,7 @@ import {
   MapPin,
   ListChecks,
   UserCog,
+  TrendingUp,
 } from "lucide-react";
 import { Role } from "@/types";
 
@@ -27,6 +28,7 @@ const navItems = [
   { href: "/locations", label: "Locations", icon: MapPin },
   { href: "/seasons", label: "Seasons", icon: Layers },
   { href: "/extra-task-types", label: "Extra Tasks", icon: ListChecks },
+  { href: "/analytics", label: "Analítika", icon: TrendingUp },
   { href: "/reports", label: "Reports", icon: BarChart2 },
   { href: "/audit", label: "Audit Log", icon: ClipboardList },
   { href: "/settings", label: "Settings", icon: Settings },
