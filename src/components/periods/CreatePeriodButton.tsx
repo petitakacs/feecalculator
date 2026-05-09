@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/components/ui/toaster";
+import { useLocationFilter } from "@/lib/location-context";
+import { formatInteger, parseFormattedInteger } from "@/lib/format";
 
 interface Season {
   id: string;
@@ -22,13 +24,16 @@ export function CreatePeriodButton({
   locations: Location[];
 }) {
   const router = useRouter();
+  const { selectedLocationId } = useLocationFilter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [openingBalanceStr, setOpeningBalanceStr] = useState("0");
+  const [collectedSCStr, setCollectedSCStr] = useState("0");
   const [form, setForm] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
     seasonId: seasons[0]?.id ?? "",
-    locationId: locations[0]?.id ?? "",
+    locationId: selectedLocationId ?? locations[0]?.id ?? "",
     openingBalance: 0,
     collectedServiceCharge: 0,
     notes: "",
@@ -66,7 +71,12 @@ export function CreatePeriodButton({
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setForm((f) => ({ ...f, locationId: selectedLocationId ?? locations[0]?.id ?? "" }));
+          setOpeningBalanceStr("0");
+          setCollectedSCStr("0");
+          setOpen(true);
+        }}
         className="px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-700 text-sm font-medium"
       >
         + New Period
@@ -135,15 +145,16 @@ export function CreatePeriodButton({
                   Nyitó egyenleg (Ft)
                 </label>
                 <input
-                  type="number"
-                  value={form.openingBalance}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      openingBalance: Math.round(parseFloat(e.target.value || "0")),
-                    }))
-                  }
-                  step="1"
+                  type="text"
+                  inputMode="numeric"
+                  value={openingBalanceStr}
+                  onChange={(e) => {
+                    const raw = parseFormattedInteger(e.target.value);
+                    setOpeningBalanceStr(raw);
+                    setForm((f) => ({ ...f, openingBalance: parseInt(raw, 10) || 0 }));
+                  }}
+                  onBlur={() => setOpeningBalanceStr(formatInteger(form.openingBalance) || "0")}
+                  onFocus={(e) => e.target.select()}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
               </div>
@@ -153,15 +164,16 @@ export function CreatePeriodButton({
                   Befolyt szervízdíj (Ft)
                 </label>
                 <input
-                  type="number"
-                  value={form.collectedServiceCharge}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      collectedServiceCharge: Math.round(parseFloat(e.target.value || "0")),
-                    }))
-                  }
-                  step="1"
+                  type="text"
+                  inputMode="numeric"
+                  value={collectedSCStr}
+                  onChange={(e) => {
+                    const raw = parseFormattedInteger(e.target.value);
+                    setCollectedSCStr(raw);
+                    setForm((f) => ({ ...f, collectedServiceCharge: parseInt(raw, 10) || 0 }));
+                  }}
+                  onBlur={() => setCollectedSCStr(formatInteger(form.collectedServiceCharge) || "0")}
+                  onFocus={(e) => e.target.select()}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
               </div>

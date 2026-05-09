@@ -111,6 +111,21 @@ export async function POST(
       : undefined,
   };
 
+  // For sales-based modes, require at least one waiter entry with positive sales
+  const salesBasedMode = seasonParams.mode === "SALES_BASED" || seasonParams.mode === "SALES_BASED_WITH_LIMITS";
+  if (salesBasedMode && waiterEntries.length === 0) {
+    return NextResponse.json(
+      { error: "Nincs pincér eladás rögzítve. Add meg az egyéni pincér eladásokat (Pincér eladás oszlop) a számítás előtt." },
+      { status: 422 }
+    );
+  }
+  if (salesBasedMode && waiterEntries.every((w) => w.netSalesCents === 0)) {
+    return NextResponse.json(
+      { error: "Minden pincér eladás 0 Ft. Ellenőrizd a beírt eladási értékeket." },
+      { status: 422 }
+    );
+  }
+
   const result = calculatePeriod(waiterEntries, allEntries, rules, seasonParams);
 
   // Update all entries with calculated values

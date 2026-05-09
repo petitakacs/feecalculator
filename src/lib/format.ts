@@ -1,4 +1,24 @@
 /**
+ * Format an integer with thousands grouping, no currency symbol (e.g., 1500000 → "1 500 000")
+ */
+export function formatInteger(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "";
+  const n = typeof value === "string"
+    ? parseInt(value.replace(/[^\d-]/g, ""), 10)
+    : Math.round(Number(value));
+  if (isNaN(n)) return "";
+  return new Intl.NumberFormat("hu-HU", { maximumFractionDigits: 0 }).format(n);
+}
+
+/**
+ * Strip thousands separators and parse to raw integer string.
+ * Handles both space (hu-HU) and dot separators.
+ */
+export function parseFormattedInteger(value: string): string {
+  return value.replace(/[^\d-]/g, "");
+}
+
+/**
  * Format cents to currency string (e.g., €1,234.56)
  */
 export function formatCurrency(forint: number | string | null | undefined): string {

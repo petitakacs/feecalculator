@@ -10,7 +10,7 @@ import {
   Location,
   Role,
 } from "@/types";
-import { formatCurrency, formatHours } from "@/lib/format";
+import { formatCurrency, formatHours, formatInteger, parseFormattedInteger } from "@/lib/format";
 import { showToast } from "@/components/ui/toaster";
 import { ExportButton } from "@/components/allocation/ExportButton";
 import { ImportModal } from "@/components/allocation/ImportModal";
@@ -101,6 +101,8 @@ export function AllocationTable({
   const [addIsLoan, setAddIsLoan] = useState(false);
   const [addingOne, setAddingOne] = useState(false);
 
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
+
   // Template state
   const TEMPLATE_KEY = `sc_template_${period.locationId ?? "global"}`;
   const loadTemplates = (): Record<string, string[]> => {
@@ -156,25 +158,27 @@ export function AllocationTable({
     setSavingRows((prev) => new Set(prev).add(entry.id));
     setDirtyRows((prev) => { const n = new Set(prev); n.delete(entry.id); return n; });
 
+    const parseHUF = (s: string) => Math.round(parseInt(parseFormattedInteger(s), 10) || 0);
+
     const updateData: Record<string, unknown> = {
       workedHours: parseFloat(vals.workedHours) || 0,
       overtimeHours: parseFloat(vals.overtimeHours) || 0,
-      bonus: Math.round(parseFloat(vals.bonus) || 0),
-      overtimePayment: Math.round(parseFloat(vals.overtimePayment) || 0),
-      manualCorrection: Math.round(parseFloat(vals.manualCorrection) || 0),
+      bonus: parseHUF(vals.bonus),
+      overtimePayment: parseHUF(vals.overtimePayment),
+      manualCorrection: parseHUF(vals.manualCorrection),
       notes: vals.notes || null,
     };
     if (vals.netWaiterSales !== "") {
-      updateData.netWaiterSales = Math.round(parseFloat(vals.netWaiterSales) || 0);
+      updateData.netWaiterSales = parseHUF(vals.netWaiterSales);
     }
     if (vals.finalApprovedAmount !== "") {
-      const approvedAmt = Math.round(parseFloat(vals.finalApprovedAmount) || 0);
+      const approvedAmt = parseHUF(vals.finalApprovedAmount);
       updateData.finalApprovedAmount = approvedAmt;
       const computedTarget =
         (entry.targetServiceChargeAmount ?? 0) +
-        Math.round(parseFloat(vals.bonus) || 0) +
-        Math.round(parseFloat(vals.overtimePayment) || 0) +
-        Math.round(parseFloat(vals.manualCorrection) || 0);
+        parseHUF(vals.bonus) +
+        parseHUF(vals.overtimePayment) +
+        parseHUF(vals.manualCorrection);
       if (approvedAmt !== computedTarget) updateData.overrideFlag = true;
     }
 
@@ -255,17 +259,13 @@ export function AllocationTable({
   };
 
   const handleAddAllEmployees = async () => {
-    const primaryEntryKeys = new Set(entries.map((e) => `${e.employeeId}:${e.positionId}`));
-    const addable = availableEmployees.filter(
-      (emp) => !primaryEntryKeys.has(`${emp.id}:${emp.positionId}`)
-    );
-    if (addable.length === 0) return;
+    if (addableEmployees.length === 0) return;
     setAddingAll(true);
     try {
       const res = await fetch(`/api/periods/${period.id}/entries/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employeeIds: addable.map((e) => e.id) }),
+        body: JSON.stringify({ employeeIds: addableEmployees.map((e) => e.id) }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -447,6 +447,10 @@ export function AllocationTable({
     }
   };
 
+  const MONEY_FIELDS: (keyof RowValues)[] = [
+    "netWaiterSales", "bonus", "overtimePayment", "manualCorrection", "finalApprovedAmount",
+  ];
+
   const inputCell = (
     entry: MonthlyEmployeeEntry,
     field: keyof RowValues,
@@ -454,21 +458,36 @@ export function AllocationTable({
     type: "number" | "text" = "number",
     placeholder?: string
   ) => {
-    const value = rowValues[entry.id]?.[field] ?? "";
+    const raw = rowValues[entry.id]?.[field] ?? "";
+    const isMoney = MONEY_FIELDS.includes(field);
+    const inputKey = `${entry.id}:${field}`;
+    const isFocused = focusedInput === inputKey;
+
     if (editable) {
+      const displayValue = isMoney && !isFocused && raw !== ""
+        ? formatInteger(raw)
+        : raw;
       return (
         <input
           type={type}
-          value={value}
-          onChange={(e) => updateField(entry.id, field, e.target.value)}
-          onBlur={() => handleBlurSave(entry)}
+          inputMode={isMoney ? "numeric" : undefined}
+          value={displayValue}
+          onChange={(e) => {
+            const val = isMoney
+              ? parseFormattedInteger(e.target.value)
+              : e.target.value;
+            updateField(entry.id, field, val);
+          }}
+          onFocus={() => isMoney && setFocusedInput(inputKey)}
+          onBlur={() => { setFocusedInput(null); handleBlurSave(entry); }}
           placeholder={placeholder}
           className={`${width} text-right border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white`}
         />
       );
     }
-    if (type === "text") return <span>{value}</span>;
-    return value === "" ? <span className="text-gray-300">-</span> : <span>{value}</span>;
+    if (type === "text") return <span>{raw}</span>;
+    if (raw === "") return <span className="text-gray-300">-</span>;
+    return <span>{isMoney ? formatInteger(raw) : raw}</span>;
   };
 
   // Grouping
