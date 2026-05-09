@@ -2,6 +2,8 @@ export interface AnalyticsRecord {
   // IDs
   periodId: string;
   employeeId: string;
+  seasonId: string;
+  seasonName: string;
   // Display
   employeeName: string;
   positionName: string;

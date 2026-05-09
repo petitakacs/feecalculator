@@ -26,6 +26,7 @@ interface EmployeeStats {
   lastMonth: number;
   yearlyAvgs: { year: number; avgSZD: number; months: number }[];
   yoyChange: { amount: number; pct: number } | null;
+  seasonAvgs: { seasonId: string; seasonName: string; avgSZD: number; months: number }[];
 }
 
 interface AnomalyInfo {
@@ -400,6 +401,14 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
     return Array.from(s).sort();
   }, [records]);
 
+  const allSeasons = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of records) map.set(r.seasonId, r.seasonName);
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "hu"));
+  }, [records]);
+
   const minYear = allYears[0] ?? new Date().getFullYear();
   const maxYear = allYears[allYears.length - 1] ?? new Date().getFullYear();
 
@@ -411,10 +420,12 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
   const [yearTo, setYearTo] = useState<number>(maxYear);
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [seasonFilter, setSeasonFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"overview" | "detail">("overview");
   const [selectedDetailEmployee, setSelectedDetailEmployee] = useState<
     string | null
   >(null);
+  const [periodGrouping, setPeriodGrouping] = useState<"year" | "season">("year");
 
   // Overview sort
   const [overviewSortField, setOverviewSortField] =
@@ -436,6 +447,8 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
         return false;
       if (statusFilter !== "all" && r.periodStatus !== statusFilter)
         return false;
+      if (seasonFilter !== "all" && r.seasonId !== seasonFilter)
+        return false;
       if (
         selectedEmployeeIds.length > 0 &&
         !selectedEmployeeIds.includes(r.employeeId)
@@ -443,7 +456,7 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
         return false;
       return true;
     });
-  }, [records, yearFrom, yearTo, locationFilter, statusFilter, selectedEmployeeIds]);
+  }, [records, yearFrom, yearTo, locationFilter, statusFilter, seasonFilter, selectedEmployeeIds]);
 
   // --- Per-employee stats ---
   const employeeStats = useMemo((): EmployeeStats[] => {
@@ -497,6 +510,26 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
         }
       }
 
+      // Season averages (sorted by first occurrence in sorted records)
+      const seasonOrder: string[] = [];
+      const bySeason = new Map<string, { name: string; vals: number[] }>();
+      for (const r of sorted) {
+        if (!bySeason.has(r.seasonId)) {
+          bySeason.set(r.seasonId, { name: r.seasonName, vals: [] });
+          seasonOrder.push(r.seasonId);
+        }
+        bySeason.get(r.seasonId)!.vals.push(r.effectiveSZD);
+      }
+      const seasonAvgs = seasonOrder.map((sid) => {
+        const { name, vals } = bySeason.get(sid)!;
+        return {
+          seasonId: sid,
+          seasonName: name,
+          avgSZD: Math.round(vals.reduce((s, v) => s + v, 0) / vals.length),
+          months: vals.length,
+        };
+      });
+
       result.push({
         employeeId,
         employeeName: empRecords[0].employeeName,
@@ -515,6 +548,7 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
         lastMonth: last.month,
         yearlyAvgs,
         yoyChange,
+        seasonAvgs,
       });
     });
     return result;
@@ -739,6 +773,25 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
             </select>
           </div>
 
+          {/* Season */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">
+              Szezon
+            </label>
+            <select
+              value={seasonFilter}
+              onChange={(e) => setSeasonFilter(e.target.value)}
+              className="h-9 px-2 border border-gray-300 rounded-md bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">Összes szezon</option>
+              {allSeasons.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Employee multi-select */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-500">
@@ -853,43 +906,89 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
           </div>
         )}
 
-        {/* ---- Year-by-year raise panel (employee detail only) ---- */}
+        {/* ---- Period grouping panel (employee detail only) ---- */}
         {viewMode === "detail" && detailEmployeeId && (() => {
           const stat = employeeStats.find((s) => s.employeeId === detailEmployeeId);
-          if (!stat || stat.yearlyAvgs.length < 1) return null;
+          const items =
+            periodGrouping === "year"
+              ? stat?.yearlyAvgs.map((ya, idx, arr) => ({
+                  key: String(ya.year),
+                  label: String(ya.year),
+                  avgSZD: ya.avgSZD,
+                  months: ya.months,
+                  prev: arr[idx - 1] ?? null,
+                }))
+              : stat?.seasonAvgs.map((sa, idx, arr) => ({
+                  key: sa.seasonId,
+                  label: sa.seasonName,
+                  avgSZD: sa.avgSZD,
+                  months: sa.months,
+                  prev: arr[idx - 1] ?? null,
+                }));
+          if (!items || items.length === 0) return null;
           return (
             <div className="px-6 py-4 border-b bg-gray-50">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Éves átlagok és emelések
-              </p>
+              <div className="flex items-center gap-3 mb-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Átlagok és változások
+                </p>
+                <div className="flex rounded-md border border-gray-300 overflow-hidden ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setPeriodGrouping("year")}
+                    className={`px-2.5 py-1 text-xs transition-colors ${
+                      periodGrouping === "year"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Évek
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPeriodGrouping("season")}
+                    className={`px-2.5 py-1 text-xs transition-colors ${
+                      periodGrouping === "season"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Szezonok
+                  </button>
+                </div>
+              </div>
               <div className="flex flex-wrap gap-3">
-                {stat.yearlyAvgs.map((ya, idx) => {
-                  const prev = stat.yearlyAvgs[idx - 1];
+                {items.map((item) => {
                   const change =
-                    prev && prev.avgSZD > 0
+                    item.prev && item.prev.avgSZD > 0
                       ? {
-                          amount: ya.avgSZD - prev.avgSZD,
-                          pct: ((ya.avgSZD - prev.avgSZD) / prev.avgSZD) * 100,
+                          amount: item.avgSZD - item.prev.avgSZD,
+                          pct:
+                            ((item.avgSZD - item.prev.avgSZD) /
+                              item.prev.avgSZD) *
+                            100,
                         }
                       : null;
                   return (
                     <div
-                      key={ya.year}
-                      className="flex flex-col items-center bg-white rounded-lg border border-gray-200 px-4 py-2.5 min-w-[110px] shadow-sm"
+                      key={item.key}
+                      className="flex flex-col items-center bg-white rounded-lg border border-gray-200 px-4 py-2.5 min-w-[120px] shadow-sm"
                     >
-                      <span className="text-xs font-semibold text-gray-500 mb-1">
-                        {ya.year}
+                      <span className="text-xs font-semibold text-gray-500 mb-1 text-center leading-tight">
+                        {item.label}
                       </span>
                       <span className="text-base font-bold text-gray-900">
-                        {formatCurrency(ya.avgSZD)}
+                        {formatCurrency(item.avgSZD)}
                       </span>
                       <span className="text-xs text-gray-400">
-                        {ya.months} hó átl.
+                        {item.months} hó átl.
                       </span>
                       {change != null ? (
                         <span
                           className={`mt-1 text-xs font-medium ${
-                            change.amount >= 0 ? "text-green-700" : "text-red-600"
+                            change.amount >= 0
+                              ? "text-green-700"
+                              : "text-red-600"
                           }`}
                         >
                           {change.amount >= 0 ? "+" : ""}

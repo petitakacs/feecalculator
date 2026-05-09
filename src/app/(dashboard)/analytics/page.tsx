@@ -14,6 +14,7 @@ export default async function AnalyticsPage() {
       period: {
         include: {
           location: true,
+          season: true,
         },
       },
       employee: true,
@@ -60,6 +61,8 @@ export default async function AnalyticsPage() {
     return {
       periodId: entry.periodId,
       employeeId: entry.employeeId,
+      seasonId: period.seasonId,
+      seasonName: period.season.name,
       employeeName: entry.employee.name,
       positionName: entry.position.name,
       locationName: period.location?.name ?? null,
