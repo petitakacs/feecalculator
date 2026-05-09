@@ -149,6 +149,7 @@ export default async function AllocationPage({
           calculatedGrossServiceCharge: e.calculatedGrossServiceCharge ?? undefined,
           calculatedNetServiceCharge: e.calculatedNetServiceCharge ?? undefined,
           targetNetHourlyServiceCharge: e.targetNetHourlyServiceCharge ?? undefined,
+          calculatedTargetNetHourlyServiceCharge: e.calculatedTargetNetHourlyServiceCharge ?? undefined,
           targetServiceChargeAmount: e.targetServiceChargeAmount ?? undefined,
           bonus: e.bonus,
           overtimePayment: e.overtimePayment,

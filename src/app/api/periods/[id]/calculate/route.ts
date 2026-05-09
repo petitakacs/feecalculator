@@ -144,6 +144,7 @@ export async function POST(
           calculatedGrossServiceCharge: entryResult.calculatedGrossServiceChargeCents,
           calculatedNetServiceCharge: entryResult.calculatedNetServiceChargeCents,
           targetNetHourlyServiceCharge: entryResult.targetNetHourlyServiceChargeCents,
+          calculatedTargetNetHourlyServiceCharge: entryResult.targetNetHourlyServiceChargeCents,
           targetServiceChargeAmount: entryResult.targetServiceChargeAmountCents,
         },
       });

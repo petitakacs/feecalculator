@@ -17,6 +17,15 @@ import { ImportModal } from "@/components/allocation/ImportModal";
 import { hasPermission } from "@/lib/permissions";
 import { Plus, X, ArrowRightLeft, Trash2, BookmarkPlus, BookOpen } from "lucide-react";
 
+interface HistoryData {
+  prevMonth: Record<string, number>;
+  prevYearSameMonth: Record<string, number>;
+  prevYearAvg: Record<string, number>;
+  prevMonthLabel: string;
+  prevYearSameMonthLabel: string;
+  prevYearLabel: string;
+}
+
 interface AllocationTableProps {
   period: MonthlyPeriod;
   initialEntries: MonthlyEmployeeEntry[];
@@ -106,6 +115,11 @@ export function AllocationTable({
 
   const [lastRefRate, setLastRefRate] = useState<number | null>(null);
   const [savingAll, setSavingAll] = useState(false);
+
+  // History toggle state
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyData, setHistoryData] = useState<HistoryData | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Template state
   const TEMPLATE_KEY = `sc_template_${period.locationId ?? "global"}`;
@@ -466,6 +480,47 @@ export function AllocationTable({
     }
   };
 
+  const handleResetHourlyRate = async (entry: MonthlyEmployeeEntry) => {
+    const calculatedValue = entry.calculatedTargetNetHourlyServiceCharge;
+    if (calculatedValue == null) return;
+    const targetServiceChargeAmount = Math.round(calculatedValue * Number(entry.workedHours));
+    try {
+      const res = await fetch(`/api/periods/${period.id}/entries`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: entry.id,
+          targetNetHourlyServiceCharge: calculatedValue,
+          targetServiceChargeAmount,
+          overrideFlag: false,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast(err.error ?? "Visszaállítás sikertelen", "error");
+        return;
+      }
+      const updated: MonthlyEmployeeEntry = await res.json();
+      setEntries((prev) => prev.map((e) => (e.id === entry.id ? updated : e)));
+      setRowValues((prev) => ({ ...prev, [entry.id]: entryToRowValues(updated) }));
+      showToast("Célóradíj visszaállítva", "success");
+    } catch {
+      showToast("Hálózati hiba", "error");
+    }
+  };
+
+  const handleToggleHistory = async () => {
+    if (showHistory) { setShowHistory(false); return; }
+    if (historyData) { setShowHistory(true); return; }
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/periods/${period.id}/history`);
+      if (res.ok) { setHistoryData(await res.json()); setShowHistory(true); }
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const handleSaveAll = async () => {
     const dirty = entries.filter((e) => dirtyRows.has(e.id));
     if (dirty.length === 0) {
@@ -548,7 +603,7 @@ export function AllocationTable({
         .map(([positionName, entries]) => ({ positionName, entries }))
     : [{ positionName: "", entries }];
 
-  const TOTAL_COLS = editable ? 20 : 19;
+  const TOTAL_COLS = (editable ? 20 : 19) + (showHistory ? 3 : 0);
 
   const renderEntryRow = (entry: MonthlyEmployeeEntry) => {
     const isSaving = savingRows.has(entry.id);
@@ -632,7 +687,25 @@ export function AllocationTable({
         {/* Célértékek */}
         <td className="px-2 py-1.5 text-right text-green-700 text-xs">
           {editable ? (
-            inputCell(entry, "targetNetHourlyServiceCharge", "w-20")
+            <div className="flex flex-col items-end gap-0.5">
+              {inputCell(entry, "targetNetHourlyServiceCharge", "w-20")}
+              {entry.overrideFlag &&
+                entry.calculatedTargetNetHourlyServiceCharge != null &&
+                entry.calculatedTargetNetHourlyServiceCharge !== entry.targetNetHourlyServiceCharge && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-green-600/70 text-[10px]">
+                    Eredeti: {formatInteger(entry.calculatedTargetNetHourlyServiceCharge)} Ft/óra
+                  </span>
+                  <button
+                    onClick={() => handleResetHourlyRate(entry)}
+                    className="text-green-600/70 hover:text-green-700 text-[10px] leading-none"
+                    title="Visszaállítás a számított értékre"
+                  >
+                    ↺
+                  </button>
+                </div>
+              )}
+            </div>
           ) : entry.targetNetHourlyServiceCharge != null ? (() => {
             const baseMultiplier = Number(entry.position?.multiplier ?? 1);
             const variationDelta = entry.employee?.variation?.multiplierDelta != null
@@ -703,6 +776,21 @@ export function AllocationTable({
         <td className="px-2 py-1.5 text-right bg-purple-50/30 border-r border-purple-100">
           {inputCell(entry, "finalApprovedAmount", "w-20", "number", "= cél")}
         </td>
+
+        {/* Előzmény */}
+        {showHistory && (
+          <>
+            <td className="px-3 py-1.5 text-right text-slate-600 text-xs bg-slate-50/50">
+              {historyData?.prevMonth[entry.employeeId] != null ? formatCurrency(historyData.prevMonth[entry.employeeId]) : <span className="text-gray-300">-</span>}
+            </td>
+            <td className="px-3 py-1.5 text-right text-slate-600 text-xs bg-slate-50/50">
+              {historyData?.prevYearSameMonth[entry.employeeId] != null ? formatCurrency(historyData.prevYearSameMonth[entry.employeeId]) : <span className="text-gray-300">-</span>}
+            </td>
+            <td className="px-3 py-1.5 text-right text-slate-600 text-xs bg-slate-50/50 border-r border-slate-100">
+              {historyData?.prevYearAvg[entry.employeeId] != null ? formatCurrency(historyData.prevYearAvg[entry.employeeId]) : <span className="text-gray-300">-</span>}
+            </td>
+          </>
+        )}
 
         {/* Extra feladatok */}
         <td className="px-2 py-1.5 text-right bg-teal-50/30">
@@ -925,6 +1013,16 @@ export function AllocationTable({
           {groupByPosition ? "Csoportosítás: BE" : "Csoportosítás: KI"} (munkakör)
         </button>
 
+        <button
+          onClick={handleToggleHistory}
+          disabled={loadingHistory}
+          className={`px-3 py-1.5 text-sm rounded-md border font-medium transition-colors disabled:opacity-50 ${
+            showHistory ? "bg-slate-700 text-white border-slate-700" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          {loadingHistory ? "Betöltés..." : showHistory ? "Előzmény: BE" : "Előzmény: KI"}
+        </button>
+
         <div className="ml-auto flex items-center gap-2">
           <ExportButton periodId={period.id} />
           {!isLocked && period.status === "DRAFT" && canSubmit && (
@@ -956,6 +1054,9 @@ export function AllocationTable({
               <th colSpan={2} className="px-3 py-1 text-center text-xs font-bold text-green-700 bg-green-100 border-b border-green-200">Célértékek</th>
               <th colSpan={3} className="px-3 py-1 text-center text-xs font-bold text-yellow-800 bg-yellow-100 border-b border-yellow-200">Kiegészítők</th>
               <th colSpan={2} className="px-3 py-1 text-center text-xs font-bold text-purple-700 bg-purple-100 border-b border-purple-200">Összesítés</th>
+              {showHistory && (
+                <th colSpan={3} className="px-3 py-1 text-center text-xs font-bold text-slate-700 bg-slate-100 border-b border-slate-200">Előzmény</th>
+              )}
               <th colSpan={1} className="px-3 py-1 text-center text-xs font-bold text-teal-700 bg-teal-100 border-b border-teal-200">Extra</th>
               <th colSpan={2} className="px-3 py-1 text-center text-xs font-bold text-orange-700 bg-orange-100 border-b border-orange-200">Kereset</th>
               <th rowSpan={2} className="px-3 py-2 text-left font-semibold text-gray-600 bg-gray-100 border-b border-gray-200">Megjegyzés</th>
@@ -975,6 +1076,20 @@ export function AllocationTable({
               <th className="px-3 py-1.5 text-right font-medium text-yellow-700 bg-yellow-50 border-b border-yellow-100 border-r border-yellow-100">Korrekció</th>
               <th className="px-3 py-1.5 text-right font-medium text-purple-600 bg-purple-50 border-b border-purple-100">Végső cél</th>
               <th className="px-3 py-1.5 text-right font-medium text-purple-600 bg-purple-50 border-b border-purple-100 border-r border-purple-100">Jóváhagyott</th>
+              {showHistory && historyData && (
+                <>
+                  <th className="px-3 py-1.5 text-right font-medium text-slate-600 bg-slate-50 border-b border-slate-200">{historyData.prevMonthLabel}</th>
+                  <th className="px-3 py-1.5 text-right font-medium text-slate-600 bg-slate-50 border-b border-slate-200">{historyData.prevYearSameMonthLabel}</th>
+                  <th className="px-3 py-1.5 text-right font-medium text-slate-600 bg-slate-50 border-b border-slate-200 border-r border-slate-200">Előző év átlag</th>
+                </>
+              )}
+              {showHistory && !historyData && (
+                <>
+                  <th className="px-3 py-1.5 bg-slate-50 border-b border-slate-200" />
+                  <th className="px-3 py-1.5 bg-slate-50 border-b border-slate-200" />
+                  <th className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 border-r border-slate-200" />
+                </>
+              )}
               <th className="px-3 py-1.5 text-right font-medium text-teal-600 bg-teal-50 border-b border-teal-100 border-r border-teal-100">Extra</th>
               <th className="px-3 py-1.5 text-right font-medium text-orange-600 bg-orange-50 border-b border-orange-100">Alapbér</th>
               <th className="px-3 py-1.5 text-right font-medium text-orange-700 bg-orange-50 border-b border-orange-100 border-r border-orange-100">Tényleges kereset</th>

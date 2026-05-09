@@ -258,6 +258,7 @@ model MonthlyEmployeeEntry {
   notes                        String?       @db.Text
   overrideFlag                 Boolean       @default(false)
   overrideReason               String?
+  calculatedTargetNetHourlyServiceCharge Int?
   createdAt                    DateTime      @default(now())
   updatedAt                    DateTime      @updatedAt
 

@@ -156,6 +156,7 @@ export interface MonthlyEmployeeEntry {
   calculatedGrossServiceCharge?: number;
   calculatedNetServiceCharge?: number;
   targetNetHourlyServiceCharge?: number;
+  calculatedTargetNetHourlyServiceCharge?: number;
   targetServiceChargeAmount?: number;
   bonus: number;
   overtimePayment: number;
