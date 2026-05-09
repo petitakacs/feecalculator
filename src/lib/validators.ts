@@ -99,6 +99,8 @@ export const UpdateEntrySchema = z.object({
   manualCorrection: z.number().int().optional(),
   manualCorrectionReason: z.string().optional().nullable(),
   finalApprovedAmount: z.number().int().optional().nullable(),
+  targetNetHourlyServiceCharge: z.number().int().optional().nullable(),
+  targetServiceChargeAmount: z.number().int().optional().nullable(),
   notes: z.string().optional().nullable(),
   overrideFlag: z.boolean().optional(),
   overrideReason: z.string().optional().nullable(),

@@ -35,6 +35,7 @@ interface RowValues {
   overtimePayment: string;
   manualCorrection: string;
   finalApprovedAmount: string;
+  targetNetHourlyServiceCharge: string;
   notes: string;
 }
 
@@ -57,6 +58,7 @@ function entryToRowValues(entry: MonthlyEmployeeEntry): RowValues {
     overtimePayment: String(entry.overtimePayment),
     manualCorrection: String(entry.manualCorrection),
     finalApprovedAmount: entry.finalApprovedAmount != null ? String(entry.finalApprovedAmount) : "",
+    targetNetHourlyServiceCharge: entry.targetNetHourlyServiceCharge != null ? String(entry.targetNetHourlyServiceCharge) : "",
     notes: entry.notes ?? "",
   };
 }
@@ -102,7 +104,6 @@ export function AllocationTable({
   const [addIsLoan, setAddIsLoan] = useState(false);
   const [addingOne, setAddingOne] = useState(false);
 
-  const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const [lastRefRate, setLastRefRate] = useState<number | null>(null);
   const [savingAll, setSavingAll] = useState(false);
 
@@ -174,6 +175,12 @@ export function AllocationTable({
     if (vals.netWaiterSales !== "") {
       updateData.netWaiterSales = parseHUF(vals.netWaiterSales);
     }
+    if (vals.targetNetHourlyServiceCharge !== "") {
+      const manualHourlyRate = parseHUF(vals.targetNetHourlyServiceCharge);
+      updateData.targetNetHourlyServiceCharge = manualHourlyRate;
+      updateData.targetServiceChargeAmount = Math.round(manualHourlyRate * (parseFloat(vals.workedHours) || 0));
+      updateData.overrideFlag = true;
+    }
     if (vals.finalApprovedAmount !== "") {
       const approvedAmt = parseHUF(vals.finalApprovedAmount);
       updateData.finalApprovedAmount = approvedAmt;
@@ -183,6 +190,8 @@ export function AllocationTable({
         parseHUF(vals.overtimePayment) +
         parseHUF(vals.manualCorrection);
       if (approvedAmt !== computedTarget) updateData.overrideFlag = true;
+    } else if (entry.finalApprovedAmount != null) {
+      updateData.finalApprovedAmount = null;
     }
 
     try {
@@ -474,6 +483,7 @@ export function AllocationTable({
 
   const MONEY_FIELDS: (keyof RowValues)[] = [
     "netWaiterSales", "bonus", "overtimePayment", "manualCorrection", "finalApprovedAmount",
+    "targetNetHourlyServiceCharge",
   ];
 
   const inputCell = (
@@ -485,11 +495,9 @@ export function AllocationTable({
   ) => {
     const raw = rowValues[entry.id]?.[field] ?? "";
     const isMoney = MONEY_FIELDS.includes(field);
-    const inputKey = `${entry.id}:${field}`;
-    const isFocused = focusedInput === inputKey;
 
     if (editable) {
-      const displayValue = isMoney && !isFocused && raw !== ""
+      const displayValue = isMoney && raw !== ""
         ? formatInteger(raw)
         : raw;
       return (
@@ -503,8 +511,7 @@ export function AllocationTable({
               : e.target.value;
             updateField(entry.id, field, val);
           }}
-          onFocus={() => isMoney && setFocusedInput(inputKey)}
-          onBlur={() => { setFocusedInput(null); handleBlurSave(entry); }}
+          onBlur={() => handleBlurSave(entry)}
           placeholder={placeholder}
           className={`${width} text-right border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white`}
         />
@@ -623,8 +630,10 @@ export function AllocationTable({
         </td>
 
         {/* Célértékek */}
-        <td className="px-3 py-1.5 text-right text-green-700 text-xs">
-          {entry.targetNetHourlyServiceCharge != null ? (() => {
+        <td className="px-2 py-1.5 text-right text-green-700 text-xs">
+          {editable ? (
+            inputCell(entry, "targetNetHourlyServiceCharge", "w-20")
+          ) : entry.targetNetHourlyServiceCharge != null ? (() => {
             const baseMultiplier = Number(entry.position?.multiplier ?? 1);
             const variationDelta = entry.employee?.variation?.multiplierDelta != null
               ? Number(entry.employee.variation.multiplierDelta) : 0;

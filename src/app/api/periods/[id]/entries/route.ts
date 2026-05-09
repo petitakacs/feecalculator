@@ -134,9 +134,10 @@ export async function PATCH(
   const existing = await prisma.monthlyEmployeeEntry.findUnique({ where: { id: entryId } });
   if (!existing) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
 
-  // Check if override flag should be set
+  // Set override when a non-null approved amount differs from the computed target,
+  // or when targetNetHourlyServiceCharge is manually provided (client already sends overrideFlag:true).
   const shouldSetOverride =
-    parsed.data.finalApprovedAmount !== undefined &&
+    parsed.data.finalApprovedAmount != null &&
     parsed.data.finalApprovedAmount !== existing.targetServiceChargeAmount;
 
   const updated = await prisma.monthlyEmployeeEntry.update({
