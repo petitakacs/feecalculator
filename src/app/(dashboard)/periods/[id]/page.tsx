@@ -46,7 +46,16 @@ export default async function PeriodDetailPage({
           </div>
           <p className="mt-1 text-sm text-gray-500">Season: {period.season.name}</p>
         </div>
-        <PeriodActions period={period} userRole={session.user.role} />
+        <PeriodActions
+          period={{
+            id: period.id,
+            status: period.status,
+            collectedServiceCharge: period.collectedServiceCharge,
+            openingBalance: period.openingBalance,
+            notes: period.notes,
+          }}
+          userRole={session.user.role}
+        />
       </div>
 
       {/* Summary Cards */}
