@@ -30,16 +30,32 @@ model Location {
 // ─── Users & Auth ─────────────────────────────────────────────────────────────
 
 model User {
-  id           String           @id @default(cuid())
-  name         String
-  email        String           @unique
-  passwordHash String
-  role         Role             @default(STORE_MANAGER)
-  active       Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  auditLogs    AuditLog[]
-  approvals    PeriodApproval[]
+  id                   String           @id @default(cuid())
+  name                 String
+  email                String           @unique
+  passwordHash         String
+  role                 Role             @default(STORE_MANAGER)
+  active               Boolean          @default(true)
+  twoFactorEnabled     Boolean          @default(false)
+  twoFactorSecret      String?
+  twoFactorBackupCodes String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  auditLogs            AuditLog[]
+  approvals            PeriodApproval[]
+  twoFactorTokens      TwoFactorToken[]
+}
+
+model TwoFactorToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 enum Role {
