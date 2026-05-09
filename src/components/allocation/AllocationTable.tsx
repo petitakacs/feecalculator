@@ -220,6 +220,12 @@ export function AllocationTable({
   const handleCalculate = async () => {
     setCalculating(true);
     try {
+      // Flush any unsaved dirty rows before calculating
+      const dirtyEntries = entries.filter((e) => dirtyRows.has(e.id));
+      if (dirtyEntries.length > 0) {
+        await Promise.all(dirtyEntries.map(handleBlurSave));
+      }
+
       const res = await fetch(`/api/periods/${period.id}/calculate`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json();
@@ -469,7 +475,7 @@ export function AllocationTable({
         : raw;
       return (
         <input
-          type={type}
+          type={isMoney ? "text" : type}
           inputMode={isMoney ? "numeric" : undefined}
           value={displayValue}
           onChange={(e) => {
