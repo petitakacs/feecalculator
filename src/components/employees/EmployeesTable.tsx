@@ -6,11 +6,14 @@ import { formatDate, formatCurrency } from "@/lib/format";
 import { showToast } from "@/components/ui/toaster";
 import { Role } from "@/types";
 import { hasPermission } from "@/lib/permissions";
+import { useLocationFilter } from "@/lib/location-context";
 
 interface EmployeeRow {
   id: string;
   name: string;
   positionName: string;
+  variationName?: string;
+  locationId?: string;
   baseSalaryType: string;
   baseSalaryAmount: number;
   startDate: string;
@@ -28,6 +31,7 @@ export function EmployeesTable({
   const [toggling, setToggling] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const canWrite = hasPermission(userRole, "employees:write");
+  const { selectedLocationId } = useLocationFilter();
 
   const handleToggle = async (emp: EmployeeRow) => {
     setToggling(emp.id);
@@ -45,10 +49,7 @@ export function EmployeesTable({
       setEmployees((prev) =>
         prev.map((e) => (e.id === emp.id ? { ...e, active: !e.active } : e))
       );
-      showToast(
-        emp.active ? `${emp.name} archiválva` : `${emp.name} aktiválva`,
-        "success"
-      );
+      showToast(emp.active ? `${emp.name} archiválva` : `${emp.name} aktiválva`, "success");
     } catch {
       showToast("Hálózati hiba", "error");
     } finally {
@@ -56,8 +57,16 @@ export function EmployeesTable({
     }
   };
 
-  const visible = showInactive ? employees : employees.filter((e) => e.active);
-  const inactiveCount = employees.filter((e) => !e.active).length;
+  // Filter by session-level location (client-side, mirrors AllocationTable logic)
+  const locationFiltered = selectedLocationId
+    ? employees.filter((e) => !e.locationId || e.locationId === selectedLocationId)
+    : employees;
+
+  const visible = showInactive
+    ? locationFiltered
+    : locationFiltered.filter((e) => e.active);
+
+  const inactiveCount = locationFiltered.filter((e) => !e.active).length;
 
   return (
     <div className="space-y-3">
@@ -77,7 +86,7 @@ export function EmployeesTable({
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Név</th>
-              <th className="text-left px-6 py-3 font-medium text-gray-500">Pozíció</th>
+              <th className="text-left px-6 py-3 font-medium text-gray-500">Pozíció / változat</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Bér típusa</th>
               <th className="text-right px-6 py-3 font-medium text-gray-500">Alapbér</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Kezdés dátuma</th>
@@ -98,7 +107,16 @@ export function EmployeesTable({
                     <span className="line-through text-gray-400">{emp.name}</span>
                   )}
                 </td>
-                <td className="px-6 py-4 text-gray-500">{emp.positionName}</td>
+                <td className="px-6 py-4 text-gray-500">
+                  <div className="flex items-center gap-1.5">
+                    <span>{emp.positionName}</span>
+                    {emp.variationName && (
+                      <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-medium">
+                        {emp.variationName}
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-6 py-4 text-gray-500">
                   {emp.baseSalaryType === "HOURLY" ? "Órabér" : "Havi bér"}
                 </td>
@@ -135,7 +153,9 @@ export function EmployeesTable({
             {visible.length === 0 && (
               <tr>
                 <td colSpan={canWrite ? 7 : 6} className="px-6 py-8 text-center text-gray-500">
-                  Nincsenek dolgozók.
+                  {selectedLocationId
+                    ? "Ennél a lokációnál nincsenek dolgozók."
+                    : "Nincsenek dolgozók."}
                 </td>
               </tr>
             )}

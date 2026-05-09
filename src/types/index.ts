@@ -58,12 +58,22 @@ export interface Position {
   updatedAt: string;
 }
 
+export interface PositionVariation {
+  id: string;
+  positionId: string;
+  name: string;
+  multiplierDelta: number;
+  active: boolean;
+}
+
 export interface Employee {
   id: string;
   name: string;
   active: boolean;
   positionId: string;
   position?: Position;
+  variationId?: string;
+  variation?: PositionVariation;
   baseSalaryType: SalaryType;
   baseSalaryAmount: number;
   eligibleForServiceCharge: boolean;

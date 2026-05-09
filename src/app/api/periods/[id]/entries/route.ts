@@ -16,7 +16,7 @@ export async function GET(
 
   const entries = await prisma.monthlyEmployeeEntry.findMany({
     where: { periodId: id },
-    include: { employee: { include: { position: true, location: true } }, position: true, workingLocation: true },
+    include: { employee: { include: { position: true, location: true, variation: true } }, position: true, workingLocation: true },
     orderBy: [{ employee: { name: "asc" } }, { position: { name: "asc" } }],
   });
 
@@ -145,7 +145,7 @@ export async function PATCH(
       ...parsed.data,
       overrideFlag: shouldSetOverride || parsed.data.overrideFlag || existing.overrideFlag,
     },
-    include: { employee: { include: { position: true, location: true } }, position: true, workingLocation: true },
+    include: { employee: { include: { position: true, location: true, variation: true } }, position: true, workingLocation: true },
   });
 
   await createAuditLog({

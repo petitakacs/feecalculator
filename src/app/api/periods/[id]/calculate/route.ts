@@ -28,7 +28,7 @@ export async function POST(
       season: true,
       location: true,
       entries: {
-        include: { employee: { include: { position: true } }, position: true },
+        include: { employee: { include: { position: true, variation: true } }, position: true },
       },
     },
   });
@@ -75,9 +75,13 @@ export async function POST(
   const allEntries: PositionEntry[] = [];
 
   for (const entry of period.entries) {
-    const positionMultiplier =
-      multiplierOverrideMap.get(entry.positionId) ??
+    // SeasonPositionRule overrides have highest priority; otherwise base + variation delta
+    const baseMultiplier = multiplierOverrideMap.get(entry.positionId) ??
       Number(entry.position.multiplier);
+    const variationDelta = entry.employee?.variation?.multiplierDelta != null
+      ? Number(entry.employee.variation.multiplierDelta)
+      : 0;
+    const positionMultiplier = baseMultiplier + variationDelta;
 
     allEntries.push({
       entryId: entry.id,

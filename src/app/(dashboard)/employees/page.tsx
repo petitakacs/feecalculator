@@ -10,7 +10,7 @@ export default async function EmployeesPage() {
   if (!session) return null;
 
   const employees = await prisma.employee.findMany({
-    include: { position: true },
+    include: { position: true, variation: true },
     orderBy: { name: "asc" },
   });
 
@@ -31,6 +31,8 @@ export default async function EmployeesPage() {
           id: emp.id,
           name: emp.name,
           positionName: emp.position.name,
+          variationName: emp.variation?.name ?? undefined,
+          locationId: emp.locationId ?? undefined,
           baseSalaryType: emp.baseSalaryType,
           baseSalaryAmount: Number(emp.baseSalaryAmount),
           startDate: emp.startDate.toISOString(),

@@ -564,10 +564,15 @@ export function AllocationTable({
       >
         {/* Name */}
         <td className="px-3 py-2 sticky left-0 bg-inherit z-10 border-r border-gray-100">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-medium text-xs">
               {entry.employee?.name ?? entry.employeeId}
             </span>
+            {entry.employee?.variation && (
+              <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs" title={`Változat szorzó delta: ${entry.employee.variation.multiplierDelta >= 0 ? "+" : ""}${entry.employee.variation.multiplierDelta}x`}>
+                {entry.employee.variation.name}
+              </span>
+            )}
             {entry.entryLabel && (
               <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
                 {entry.entryLabel}
