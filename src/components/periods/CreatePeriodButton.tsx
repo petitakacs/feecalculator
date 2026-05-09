@@ -47,8 +47,8 @@ export function CreatePeriodButton({ seasons }: { seasons: Season[] }) {
   };
 
   const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "Január", "Február", "Március", "Április", "Május", "Június",
+    "Július", "Augusztus", "Szeptember", "Október", "November", "December",
   ];
 
   return (
@@ -63,7 +63,7 @@ export function CreatePeriodButton({ seasons }: { seasons: Season[] }) {
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-            <h2 className="text-lg font-semibold">Create New Period</h2>
+            <h2 className="text-lg font-semibold">Új periódus létrehozása</h2>
 
             <div className="mt-4 space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -105,42 +105,42 @@ export function CreatePeriodButton({ seasons }: { seasons: Season[] }) {
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Opening Balance (€)
+                  Nyitó egyenleg (Ft)
                 </label>
                 <input
                   type="number"
-                  value={form.openingBalance / 100}
+                  value={form.openingBalance}
                   onChange={(e) =>
                     setForm((f) => ({
                       ...f,
-                      openingBalance: Math.round(parseFloat(e.target.value || "0") * 100),
+                      openingBalance: Math.round(parseFloat(e.target.value || "0")),
                     }))
                   }
-                  step="0.01"
+                  step="1"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Collected Service Charge (€)
+                  Befolyt szervízdíj (Ft)
                 </label>
                 <input
                   type="number"
-                  value={form.collectedServiceCharge / 100}
+                  value={form.collectedServiceCharge}
                   onChange={(e) =>
                     setForm((f) => ({
                       ...f,
-                      collectedServiceCharge: Math.round(parseFloat(e.target.value || "0") * 100),
+                      collectedServiceCharge: Math.round(parseFloat(e.target.value || "0")),
                     }))
                   }
-                  step="0.01"
+                  step="1"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Megjegyzés</label>
                 <textarea
                   value={form.notes}
                   onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
@@ -155,14 +155,14 @@ export function CreatePeriodButton({ seasons }: { seasons: Season[] }) {
                 onClick={() => setOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
               >
-                Cancel
+                Mégsem
               </button>
               <button
                 onClick={handleCreate}
                 disabled={loading || !form.seasonId}
                 className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-gray-700 disabled:opacity-50"
               >
-                {loading ? "Creating..." : "Create Period"}
+                {loading ? "Létrehozás..." : "Létrehozás"}
               </button>
             </div>
           </div>
