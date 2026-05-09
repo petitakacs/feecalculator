@@ -39,6 +39,7 @@ export const CreateEmployeeSchema = z.object({
     .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
     .optional()
     .nullable(),
+  variationId: z.string().optional().nullable(),
   locationId: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   active: z.boolean().default(true),

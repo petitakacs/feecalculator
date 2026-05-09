@@ -21,9 +21,13 @@ export default async function EmployeeDetailPage({
       ? Promise.resolve(null)
       : prisma.employee.findUnique({
           where: { id },
-          include: { position: true, location: true },
+          include: { position: true, location: true, variation: true },
         }),
-    prisma.position.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.position.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      include: { variations: { where: { active: true }, orderBy: { name: "asc" } } },
+    }),
     prisma.location.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
   ]);
 
@@ -54,6 +58,7 @@ export default async function EmployeeDetailPage({
                 eligibleForServiceCharge: employee.eligibleForServiceCharge,
                 startDate: employee.startDate.toISOString().split("T")[0],
                 endDate: employee.endDate?.toISOString().split("T")[0] ?? undefined,
+                variationId: employee.variationId ?? undefined,
                 locationId: employee.locationId ?? undefined,
                 notes: employee.notes ?? undefined,
                 createdAt: employee.createdAt.toISOString(),
@@ -69,6 +74,11 @@ export default async function EmployeeDetailPage({
           active: p.active,
           createdAt: p.createdAt.toISOString(),
           updatedAt: p.updatedAt.toISOString(),
+          variations: p.variations.map((v) => ({
+            id: v.id,
+            name: v.name,
+            multiplierDelta: Number(v.multiplierDelta),
+          })),
         }))}
         locations={locations.map((l) => ({
           id: l.id,

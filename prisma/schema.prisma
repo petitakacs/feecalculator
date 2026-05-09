@@ -95,6 +95,8 @@ model PositionVariation {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  employees Employee[]
+
   @@unique([positionId, name])
   @@index([positionId])
 }
@@ -107,12 +109,13 @@ model Employee {
   active                   Boolean                @default(true)
   positionId               String
   position                 Position               @relation(fields: [positionId], references: [id])
+  variationId              String?
+  variation                PositionVariation?     @relation(fields: [variationId], references: [id])
   baseSalaryType           SalaryType
   baseSalaryAmount         Int
   eligibleForServiceCharge Boolean                @default(true)
   startDate                DateTime
   endDate                  DateTime?
-  // FK-based location (replaces former String? location field)
   locationId               String?
   location                 Location?              @relation(fields: [locationId], references: [id])
   notes                    String?                @db.Text
@@ -123,6 +126,7 @@ model Employee {
 
   @@index([positionId])
   @@index([locationId])
+  @@index([variationId])
 }
 
 enum SalaryType {
