@@ -24,6 +24,8 @@ interface EmployeeStats {
   trendTooltip: string;
   lastYear: number;
   lastMonth: number;
+  yearlyAvgs: { year: number; avgSZD: number; months: number }[];
+  yoyChange: { amount: number; pct: number } | null;
 }
 
 interface AnomalyInfo {
@@ -468,6 +470,33 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
       const last = sorted[n - 1];
       const { trend, tooltip } = computeTrend(sorted);
 
+      // Yearly averages
+      const byYear = new Map<number, number[]>();
+      for (const r of sorted) {
+        const arr = byYear.get(r.year) ?? [];
+        arr.push(r.effectiveSZD);
+        byYear.set(r.year, arr);
+      }
+      const yearlyAvgs = Array.from(byYear.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([year, vals]) => ({
+          year,
+          avgSZD: Math.round(vals.reduce((s, v) => s + v, 0) / vals.length),
+          months: vals.length,
+        }));
+
+      // Year-over-year change: last year vs the one before it
+      let yoyChange: { amount: number; pct: number } | null = null;
+      if (yearlyAvgs.length >= 2) {
+        const prev = yearlyAvgs[yearlyAvgs.length - 2];
+        const curr = yearlyAvgs[yearlyAvgs.length - 1];
+        if (prev.avgSZD > 0) {
+          const amount = curr.avgSZD - prev.avgSZD;
+          const pct = (amount / prev.avgSZD) * 100;
+          yoyChange = { amount, pct };
+        }
+      }
+
       result.push({
         employeeId,
         employeeName: empRecords[0].employeeName,
@@ -484,6 +513,8 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
         trendTooltip: tooltip,
         lastYear: last.year,
         lastMonth: last.month,
+        yearlyAvgs,
+        yoyChange,
       });
     });
     return result;
@@ -822,6 +853,63 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
           </div>
         )}
 
+        {/* ---- Year-by-year raise panel (employee detail only) ---- */}
+        {viewMode === "detail" && detailEmployeeId && (() => {
+          const stat = employeeStats.find((s) => s.employeeId === detailEmployeeId);
+          if (!stat || stat.yearlyAvgs.length < 1) return null;
+          return (
+            <div className="px-6 py-4 border-b bg-gray-50">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Éves átlagok és emelések
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {stat.yearlyAvgs.map((ya, idx) => {
+                  const prev = stat.yearlyAvgs[idx - 1];
+                  const change =
+                    prev && prev.avgSZD > 0
+                      ? {
+                          amount: ya.avgSZD - prev.avgSZD,
+                          pct: ((ya.avgSZD - prev.avgSZD) / prev.avgSZD) * 100,
+                        }
+                      : null;
+                  return (
+                    <div
+                      key={ya.year}
+                      className="flex flex-col items-center bg-white rounded-lg border border-gray-200 px-4 py-2.5 min-w-[110px] shadow-sm"
+                    >
+                      <span className="text-xs font-semibold text-gray-500 mb-1">
+                        {ya.year}
+                      </span>
+                      <span className="text-base font-bold text-gray-900">
+                        {formatCurrency(ya.avgSZD)}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {ya.months} hó átl.
+                      </span>
+                      {change != null ? (
+                        <span
+                          className={`mt-1 text-xs font-medium ${
+                            change.amount >= 0 ? "text-green-700" : "text-red-600"
+                          }`}
+                        >
+                          {change.amount >= 0 ? "+" : ""}
+                          {formatCurrency(change.amount)}{" "}
+                          <span className="opacity-75">
+                            ({change.pct >= 0 ? "+" : ""}
+                            {change.pct.toFixed(1)}%)
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="mt-1 text-xs text-gray-300">—</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="overflow-x-auto">
           {/* ---- OVERVIEW TABLE ---- */}
           {viewMode === "overview" && (
@@ -888,6 +976,9 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Trend
                   </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    Éves emelés
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Utolsó periódus
                   </th>
@@ -949,6 +1040,23 @@ export function AnalyticsView({ records }: { records: AnalyticsRecord[] }) {
                         trend={stat.trend}
                         tooltip={stat.trendTooltip}
                       />
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {stat.yoyChange != null ? (
+                        <span
+                          className={`text-sm font-medium ${stat.yoyChange.amount >= 0 ? "text-green-700" : "text-red-600"}`}
+                          title={`${stat.yearlyAvgs[stat.yearlyAvgs.length - 2]?.year} → ${stat.yearlyAvgs[stat.yearlyAvgs.length - 1]?.year} éves átlag változás`}
+                        >
+                          {stat.yoyChange.amount >= 0 ? "+" : ""}
+                          {formatCurrency(stat.yoyChange.amount)}
+                          <span className="text-xs ml-1 opacity-75">
+                            ({stat.yoyChange.pct >= 0 ? "+" : ""}
+                            {stat.yoyChange.pct.toFixed(1)}%)
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 text-sm">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap text-xs">
                       {stat.lastYear}/{String(stat.lastMonth).padStart(2, "0")}
