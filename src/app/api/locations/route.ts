@@ -11,6 +11,7 @@ export async function GET() {
 
   const locations = await prisma.location.findMany({
     orderBy: { name: "asc" },
+    include: { _count: { select: { employees: true, periods: true } } },
   });
   return NextResponse.json(locations);
 }
