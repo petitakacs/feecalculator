@@ -42,8 +42,9 @@ interface RowValues {
 interface TaskTypeOption {
   id: string;
   name: string;
-  bonusType: "FIXED_AMOUNT" | "HOURLY_RATE";
+  bonusType: "FIXED_AMOUNT" | "HOURLY_RATE" | "MULTIPLIER_FULL_HOURLY" | "MULTIPLIER_SERVICE_CHARGE_HOURLY";
   bonusAmount: number;
+  rateMultiplier?: number | null;
   active?: boolean;
 }
 
@@ -358,7 +359,7 @@ export function AllocationTable({
         notes: taskNotes || null,
       };
       const chosen = taskTypes.find((t) => t.id === taskTypeId);
-      if (chosen?.bonusType === "HOURLY_RATE") {
+      if (chosen?.bonusType !== "FIXED_AMOUNT") {
         body.hours = parseFloat(taskHours) || 0;
       }
       const res = await fetch(`/api/periods/${period.id}/extra-tasks`, {
@@ -1163,12 +1164,17 @@ export function AllocationTable({
                     <option value="">— Válassz —</option>
                     {taskTypes.filter((t) => t.active !== false).map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name} ({t.bonusType === "FIXED_AMOUNT" ? formatCurrency(t.bonusAmount) + "/hó" : formatCurrency(t.bonusAmount) + "/óra"})
+                        {t.name} ({
+                          t.bonusType === "FIXED_AMOUNT" ? formatCurrency(t.bonusAmount) + "/hó"
+                          : t.bonusType === "HOURLY_RATE" ? formatCurrency(t.bonusAmount) + "/óra"
+                          : t.bonusType === "MULTIPLIER_FULL_HOURLY" ? `${t.rateMultiplier}× teljes órabér`
+                          : `${t.rateMultiplier}× szervíz órabér`
+                        })
                       </option>
                     ))}
                   </select>
                 </div>
-                {chosenTaskType?.bonusType === "HOURLY_RATE" && (
+                {chosenTaskType && chosenTaskType.bonusType !== "FIXED_AMOUNT" && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Órák száma</label>
                     <input
@@ -1179,11 +1185,45 @@ export function AllocationTable({
                       step={0.5}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                     />
-                    {taskHours && chosenTaskType && (
-                      <p className="text-xs text-teal-700 mt-1">
-                        Összeg: {formatCurrency(Math.round(chosenTaskType.bonusAmount * (parseFloat(taskHours) || 0)))}
-                      </p>
-                    )}
+                    {taskHours && chosenTaskType && (() => {
+                      const h = parseFloat(taskHours) || 0;
+                      if (chosenTaskType.bonusType === "HOURLY_RATE") {
+                        return (
+                          <p className="text-xs text-teal-700 mt-1">
+                            Összeg: {formatCurrency(Math.round(chosenTaskType.bonusAmount * h))}
+                          </p>
+                        );
+                      }
+                      // Multiplier types: show preview using current entry data if available
+                      const empEntry = extraTaskModal
+                        ? entries.find((e) => e.employeeId === extraTaskModal.employeeId)
+                        : null;
+                      if (chosenTaskType.bonusType === "MULTIPLIER_FULL_HOURLY" && empEntry?.employee) {
+                        const emp = empEntry.employee;
+                        const hourlyRate = emp.baseSalaryType === "HOURLY"
+                          ? emp.baseSalaryAmount
+                          : Math.round(emp.baseSalaryAmount / 160);
+                        const mult = Number(chosenTaskType.rateMultiplier ?? 0);
+                        return (
+                          <p className="text-xs text-teal-700 mt-1">
+                            {mult}× × {formatCurrency(hourlyRate)}/óra × {h} h = {formatCurrency(Math.round(mult * hourlyRate * h))}
+                          </p>
+                        );
+                      }
+                      if (chosenTaskType.bonusType === "MULTIPLIER_SERVICE_CHARGE_HOURLY" && empEntry) {
+                        if (empEntry.targetNetHourlyServiceCharge == null) {
+                          return <p className="text-xs text-amber-600 mt-1">Kalkuláld le az időszakot először a szervízdíj órabér meghatározásához.</p>;
+                        }
+                        const mult = Number(chosenTaskType.rateMultiplier ?? 0);
+                        const rate = empEntry.targetNetHourlyServiceCharge;
+                        return (
+                          <p className="text-xs text-teal-700 mt-1">
+                            {mult}× × {formatCurrency(rate)}/óra × {h} h = {formatCurrency(Math.round(mult * rate * h))}
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 )}
                 <div>
@@ -1197,7 +1237,7 @@ export function AllocationTable({
                 </div>
                 <button
                   onClick={handleAddExtraTask}
-                  disabled={savingTask || !taskTypeId || (chosenTaskType?.bonusType === "HOURLY_RATE" && !taskHours)}
+                  disabled={savingTask || !taskTypeId || (chosenTaskType?.bonusType !== "FIXED_AMOUNT" && !taskHours)}
                   className="w-full px-4 py-2 bg-teal-600 text-white text-sm rounded-md hover:bg-teal-700 disabled:opacity-50 font-medium"
                 >
                   {savingTask ? "Mentés..." : "Hozzáadás"}

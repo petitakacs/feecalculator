@@ -12,8 +12,9 @@ export const UpdateLocationSchema = CreateLocationSchema.partial();
 export const CreateExtraTaskTypeSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional().nullable(),
-  bonusType: z.enum(["FIXED_AMOUNT", "HOURLY_RATE"]),
-  bonusAmount: z.number().int().min(0),
+  bonusType: z.enum(["FIXED_AMOUNT", "HOURLY_RATE", "MULTIPLIER_FULL_HOURLY", "MULTIPLIER_SERVICE_CHARGE_HOURLY"]),
+  bonusAmount: z.number().int().min(0).default(0),
+  rateMultiplier: z.number().positive().optional().nullable(),
   active: z.boolean().default(true),
 });
 

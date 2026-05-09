@@ -23,7 +23,11 @@ export type ApprovalAction =
   | "REOPENED"
   | "CLOSED";
 
-export type ExtraBonusType = "FIXED_AMOUNT" | "HOURLY_RATE";
+export type ExtraBonusType =
+  | "FIXED_AMOUNT"
+  | "HOURLY_RATE"
+  | "MULTIPLIER_FULL_HOURLY"
+  | "MULTIPLIER_SERVICE_CHARGE_HOURLY";
 
 export interface Location {
   id: string;
@@ -171,6 +175,7 @@ export interface ExtraTaskType {
   description?: string;
   bonusType: ExtraBonusType;
   bonusAmount: number;
+  rateMultiplier?: number | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;

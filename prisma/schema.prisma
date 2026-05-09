@@ -274,19 +274,23 @@ model MonthlyEmployeeEntry {
 enum ExtraBonusType {
   FIXED_AMOUNT
   HOURLY_RATE
+  MULTIPLIER_FULL_HOURLY
+  MULTIPLIER_SERVICE_CHARGE_HOURLY
 }
 
 model ExtraTaskType {
-  id          String         @id @default(cuid())
-  name        String         @unique
-  description String?
-  bonusType   ExtraBonusType
-  // Ft per month (FIXED_AMOUNT) or Ft per hour (HOURLY_RATE)
-  bonusAmount Int
-  active      Boolean        @default(true)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  assignments MonthlyExtraTask[]
+  id             String         @id @default(cuid())
+  name           String         @unique
+  description    String?
+  bonusType      ExtraBonusType
+  // Ft per month (FIXED_AMOUNT) or Ft per hour (HOURLY_RATE); 0 for multiplier types
+  bonusAmount    Int
+  // Multiplier value for MULTIPLIER_* types (e.g. 1.5 = 1.5×)
+  rateMultiplier Decimal?
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  assignments    MonthlyExtraTask[]
 }
 
 model MonthlyExtraTask {

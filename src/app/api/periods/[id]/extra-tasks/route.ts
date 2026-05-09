@@ -49,13 +49,48 @@ export async function POST(
   });
   if (!taskType) return NextResponse.json({ error: "Extra task type not found" }, { status: 404 });
 
+  const isMultiplierType =
+    taskType.bonusType === "MULTIPLIER_FULL_HOURLY" ||
+    taskType.bonusType === "MULTIPLIER_SERVICE_CHARGE_HOURLY";
+
+  if (isMultiplierType && !parsed.data.hours) {
+    return NextResponse.json({ error: "Az óraszám megadása kötelező ennél a típusnál" }, { status: 400 });
+  }
+
   // Compute amount
   let amount: number;
   if (taskType.bonusType === "FIXED_AMOUNT") {
     amount = taskType.bonusAmount;
-  } else {
+  } else if (taskType.bonusType === "HOURLY_RATE") {
     const hours = Number(parsed.data.hours ?? 0);
     amount = Math.round(taskType.bonusAmount * hours);
+  } else {
+    // Multiplier types: need the employee's rate from their period entry
+    const multiplier = Number(taskType.rateMultiplier ?? 0);
+    const hours = Number(parsed.data.hours ?? 0);
+    const employeeEntry = await prisma.monthlyEmployeeEntry.findFirst({
+      where: { periodId: id, employeeId: parsed.data.employeeId },
+      include: { employee: true },
+    });
+
+    if (!employeeEntry) {
+      return NextResponse.json({ error: "A dolgozónak nincs bejegyzése ebben az időszakban" }, { status: 422 });
+    }
+
+    if (taskType.bonusType === "MULTIPLIER_SERVICE_CHARGE_HOURLY") {
+      if (employeeEntry.targetNetHourlyServiceCharge == null) {
+        return NextResponse.json({ error: "A szervízdíj órabér még nem kalkulált. Futtasd le a kalkulációt először." }, { status: 422 });
+      }
+      amount = Math.round(multiplier * Number(employeeEntry.targetNetHourlyServiceCharge) * hours);
+    } else {
+      // MULTIPLIER_FULL_HOURLY: use employee base hourly rate
+      const emp = employeeEntry.employee;
+      if (!emp) return NextResponse.json({ error: "Dolgozó nem található" }, { status: 404 });
+      const hourlyRate = emp.baseSalaryType === "HOURLY"
+        ? Number(emp.baseSalaryAmount)
+        : Math.round(Number(emp.baseSalaryAmount) / 160);
+      amount = Math.round(multiplier * hourlyRate * hours);
+    }
   }
 
   const task = await prisma.monthlyExtraTask.upsert({
