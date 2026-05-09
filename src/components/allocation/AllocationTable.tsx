@@ -15,7 +15,7 @@ import { showToast } from "@/components/ui/toaster";
 import { ExportButton } from "@/components/allocation/ExportButton";
 import { ImportModal } from "@/components/allocation/ImportModal";
 import { hasPermission } from "@/lib/permissions";
-import { Plus, X, ArrowRightLeft } from "lucide-react";
+import { Plus, X, ArrowRightLeft, Trash2, BookmarkPlus, BookOpen } from "lucide-react";
 
 interface AllocationTableProps {
   period: MonthlyPeriod;
@@ -100,6 +100,14 @@ export function AllocationTable({
   const [addLabel, setAddLabel] = useState("");
   const [addIsLoan, setAddIsLoan] = useState(false);
   const [addingOne, setAddingOne] = useState(false);
+
+  // Template state
+  const TEMPLATE_KEY = `sc_template_${period.locationId ?? "global"}`;
+  const loadTemplates = (): Record<string, string[]> => {
+    try { return JSON.parse(localStorage.getItem(TEMPLATE_KEY) ?? "{}"); } catch { return {}; }
+  };
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
 
   // Extra task modal state
   const [extraTaskModal, setExtraTaskModal] = useState<{
@@ -380,10 +388,64 @@ export function AllocationTable({
     showToast("Extra feladat eltávolítva", "success");
   };
 
-  // Employees not yet in the period with their primary position
-  const addableEmployees = availableEmployees.filter(
-    (emp) => !entries.some((e) => e.employeeId === emp.id && e.positionId === emp.positionId)
-  );
+  // Employees not yet in the period; when period has a location, only show employees from that location
+  const addableEmployees = availableEmployees.filter((emp) => {
+    if (entries.some((e) => e.employeeId === emp.id && e.positionId === emp.positionId)) return false;
+    if (period.locationId && emp.locationId && emp.locationId !== period.locationId) return false;
+    return true;
+  });
+
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!confirm("Törlöd ezt a bejegyzést?")) return;
+    setDeletingEntryId(entryId);
+    try {
+      const res = await fetch(`/api/periods/${period.id}/entries/${entryId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast(err.error ?? "Törlés sikertelen", "error");
+        return;
+      }
+      setEntries((prev) => prev.filter((e) => e.id !== entryId));
+      setRowValues((prev) => { const n = { ...prev }; delete n[entryId]; return n; });
+      showToast("Bejegyzés törölve", "success");
+    } catch {
+      showToast("Hálózati hiba", "error");
+    } finally {
+      setDeletingEntryId(null);
+    }
+  };
+
+  const handleSaveTemplate = () => {
+    const name = prompt("Sablon neve:");
+    if (!name?.trim()) return;
+    const templates = loadTemplates();
+    templates[name.trim()] = entries.map((e) => e.employeeId);
+    localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templates));
+    showToast(`"${name.trim()}" sablon mentve (${entries.length} dolgozó)`, "success");
+  };
+
+  const handleLoadTemplate = async (name: string, employeeIds: string[]) => {
+    setShowTemplateMenu(false);
+    const currentIds = new Set(entries.map((e) => e.employeeId));
+    const toAdd = employeeIds.filter((id) => !currentIds.has(id));
+    if (toAdd.length === 0) { showToast("Minden dolgozó már szerepel", "info"); return; }
+    setAddingAll(true);
+    try {
+      const res = await fetch(`/api/periods/${period.id}/entries/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeIds: toAdd }),
+      });
+      if (!res.ok) { showToast("Sablon betöltése sikertelen", "error"); return; }
+      const result = await res.json();
+      await refreshEntries();
+      showToast(`"${name}" sablon betöltve: ${result.created} hozzáadva`, "success");
+    } catch {
+      showToast("Hálózati hiba", "error");
+    } finally {
+      setAddingAll(false);
+    }
+  };
 
   const inputCell = (
     entry: MonthlyEmployeeEntry,
@@ -424,7 +486,7 @@ export function AllocationTable({
         .map(([positionName, entries]) => ({ positionName, entries }))
     : [{ positionName: "", entries }];
 
-  const TOTAL_COLS = 19;
+  const TOTAL_COLS = editable ? 20 : 19;
 
   const renderEntryRow = (entry: MonthlyEmployeeEntry) => {
     const isSaving = savingRows.has(entry.id);
@@ -544,6 +606,20 @@ export function AllocationTable({
           ) : (entry.notes ?? "")}
         </td>
 
+        {/* Törlés */}
+        {editable && (
+          <td className="px-2 py-1.5 text-center">
+            <button
+              onClick={() => handleDeleteEntry(entry.id)}
+              disabled={deletingEntryId === entry.id}
+              className="p-1 text-red-400 hover:text-red-600 rounded disabled:opacity-40"
+              title="Bejegyzés törlése"
+            >
+              <Trash2 size={13} />
+            </button>
+          </td>
+        )}
+
         {/* Állapot */}
         <td className="px-2 py-1.5 text-center min-w-[72px]">
           {isSaving ? (
@@ -641,6 +717,51 @@ export function AllocationTable({
             >
               + Egyéni / más szerepkör
             </button>
+
+            {/* Templates */}
+            {entries.length > 0 && (
+              <button
+                onClick={handleSaveTemplate}
+                className="px-3 py-1.5 bg-white text-gray-700 border border-gray-300 text-sm rounded-md hover:bg-gray-50 font-medium flex items-center gap-1.5"
+                title="Jelenlegi dolgozólista mentése sablonként"
+              >
+                <BookmarkPlus size={14} />
+                Sablon mentése
+              </button>
+            )}
+            <div className="relative">
+              <button
+                onClick={() => setShowTemplateMenu((v) => !v)}
+                className="px-3 py-1.5 bg-white text-gray-700 border border-gray-300 text-sm rounded-md hover:bg-gray-50 font-medium flex items-center gap-1.5"
+                title="Sablon betöltése"
+              >
+                <BookOpen size={14} />
+                Sablon betöltése
+              </button>
+              {showTemplateMenu && (() => {
+                const templates = loadTemplates();
+                const names = Object.keys(templates);
+                return (
+                  <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[180px]">
+                    {names.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-gray-400">Nincs mentett sablon</div>
+                    ) : (
+                      names.map((name) => (
+                        <button
+                          key={name}
+                          onClick={() => handleLoadTemplate(name, templates[name])}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between gap-3"
+                        >
+                          <span>{name}</span>
+                          <span className="text-xs text-gray-400">{templates[name].length} fő</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
             <ImportModal periodId={period.id} />
             <button
               onClick={handleCalculate}
@@ -695,6 +816,7 @@ export function AllocationTable({
               <th colSpan={1} className="px-3 py-1 text-center text-xs font-bold text-teal-700 bg-teal-100 border-b border-teal-200">Extra</th>
               <th colSpan={2} className="px-3 py-1 text-center text-xs font-bold text-orange-700 bg-orange-100 border-b border-orange-200">Kereset</th>
               <th rowSpan={2} className="px-3 py-2 text-left font-semibold text-gray-600 bg-gray-100 border-b border-gray-200">Megjegyzés</th>
+              {editable && <th rowSpan={2} className="px-3 py-2 bg-gray-100 border-b border-gray-200" />}
               <th rowSpan={2} className="px-3 py-2 bg-gray-100 border-b border-gray-200 text-center text-gray-600 font-semibold">Állapot</th>
             </tr>
             <tr>
