@@ -26,6 +26,7 @@ export async function POST(
     where: { id },
     include: {
       season: true,
+      location: true,
       entries: {
         include: { employee: { include: { position: true } }, position: true },
       },
@@ -51,8 +52,13 @@ export async function POST(
     return NextResponse.json({ error: "No active business rule found" }, { status: 422 });
   }
 
+  // Per-location serviceChargePercent override takes priority over the global rule
+  const locationOverride = period.location?.serviceChargePercent != null
+    ? Number(period.location.serviceChargePercent)
+    : null;
+
   const rules = {
-    serviceChargePercent: Number(businessRule.serviceChargePercent),
+    serviceChargePercent: locationOverride ?? Number(businessRule.serviceChargePercent),
     employeeContribution: Number(businessRule.employeeContribution),
   };
 

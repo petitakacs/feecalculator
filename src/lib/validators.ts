@@ -3,6 +3,7 @@ import { z } from "zod";
 export const CreateLocationSchema = z.object({
   name: z.string().min(1, "Name is required"),
   address: z.string().optional().nullable(),
+  serviceChargePercent: z.number().min(0).max(1).optional().nullable(),
   active: z.boolean().default(true),
 });
 

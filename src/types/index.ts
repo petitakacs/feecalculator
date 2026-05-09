@@ -29,6 +29,7 @@ export interface Location {
   id: string;
   name: string;
   address?: string;
+  serviceChargePercent?: number;
   active: boolean;
   createdAt: string;
   updatedAt: string;

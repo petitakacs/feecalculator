@@ -20,6 +20,7 @@ export default async function LocationsPage() {
           id: l.id,
           name: l.name,
           address: l.address ?? undefined,
+          serviceChargePercent: l.serviceChargePercent != null ? Number(l.serviceChargePercent) : null,
           active: l.active,
           createdAt: l.createdAt.toISOString(),
           updatedAt: l.updatedAt.toISOString(),
