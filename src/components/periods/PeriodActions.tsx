@@ -125,26 +125,31 @@ export function PeriodActions({ period, userRole }: PeriodActionsProps) {
     APPROVED: [
       {
         action: "CLOSED",
-        label: "Close Period",
+        label: "Lezárás",
         className: "bg-blue-600 hover:bg-blue-700",
       },
     ],
-    CLOSED: [],
+    CLOSED: [
+      {
+        action: "REOPENED",
+        label: "Újranyitás",
+        className: "bg-orange-600 hover:bg-orange-700",
+        requireComment: true,
+      },
+    ],
+  };
+
+  const actionToStatus: Record<string, PeriodStatus> = {
+    SUBMITTED: "PENDING_APPROVAL",
+    APPROVED: "APPROVED",
+    REJECTED: "DRAFT",
+    REOPENED: "DRAFT",
+    CLOSED: "CLOSED",
   };
 
   const actions = statusActions[period.status] ?? [];
   const availableActions = actions.filter((a) =>
-    canTransitionStatus(
-      userRole,
-      period.status,
-      a.action === "SUBMITTED"
-        ? "PENDING_APPROVAL"
-        : a.action === "APPROVED"
-        ? "APPROVED"
-        : a.action === "REJECTED"
-        ? "DRAFT"
-        : "CLOSED"
-    )
+    canTransitionStatus(userRole, period.status, actionToStatus[a.action] ?? "DRAFT")
   );
 
   return (
@@ -180,7 +185,11 @@ export function PeriodActions({ period, userRole }: PeriodActionsProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
             <h2 className="text-lg font-semibold">
-              {pendingAction === "REJECTED" ? "Periódus elutasítása" : "Megjegyzés hozzáadása"}
+              {pendingAction === "REJECTED"
+                ? "Periódus elutasítása"
+                : pendingAction === "REOPENED"
+                ? "Periódus újranyitása"
+                : "Megjegyzés hozzáadása"}
             </h2>
             <textarea
               value={comment}
@@ -199,7 +208,11 @@ export function PeriodActions({ period, userRole }: PeriodActionsProps) {
               <button
                 onClick={() => pendingAction && doAction(pendingAction, comment)}
                 disabled={loading}
-                className="px-4 py-2 text-sm text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
+                className={`px-4 py-2 text-sm text-white rounded-md disabled:opacity-50 ${
+                  pendingAction === "REOPENED"
+                    ? "bg-orange-600 hover:bg-orange-700"
+                    : "bg-red-600 hover:bg-red-700"
+                }`}
               >
                 Megerősítés
               </button>

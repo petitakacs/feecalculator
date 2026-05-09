@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { BusinessRulesManager } from "@/components/settings/BusinessRulesManager";
 import { UsersManager } from "@/components/settings/UsersManager";
 import { TwoFactorSettings } from "@/components/settings/TwoFactorSettings";
+import { RolePermissionsMatrix } from "@/components/settings/RolePermissionsMatrix";
 import { hasPermission } from "@/lib/permissions";
 
 export default async function SettingsPage() {
@@ -70,6 +71,16 @@ export default async function SettingsPage() {
           userRole={session.user.role}
         />
       </div>
+
+      {canManageUsers && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-1">Szerepkörök és jogosultságok</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Az egyes szerepkörökhöz tartozó jogosultságok áttekintése.
+          </p>
+          <RolePermissionsMatrix />
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold mb-1">Security</h2>

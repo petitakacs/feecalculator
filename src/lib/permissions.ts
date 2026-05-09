@@ -128,7 +128,9 @@ export function canTransitionStatus(
     APPROVED: [
       { to: "CLOSED", roles: ["ADMIN", "BUSINESS_UNIT_LEAD"] },
     ],
-    CLOSED: [],
+    CLOSED: [
+      { to: "DRAFT", roles: ["ADMIN", "BUSINESS_UNIT_LEAD"] },
+    ],
   };
 
   const allowed = transitions[fromStatus] ?? [];

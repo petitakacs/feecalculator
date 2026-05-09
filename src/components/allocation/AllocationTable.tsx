@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, type ReactNode } from "react";
+import React, { useState, useCallback, useRef, type ReactNode } from "react";
 import {
   MonthlyPeriod,
   MonthlyEmployeeEntry,
@@ -1213,9 +1213,9 @@ export function AllocationTable({
               </tr>
             ) : (
               groupedEntries.map((group) => (
-                <>
+                <React.Fragment key={group.positionName}>
                   {groupByPosition && (
-                    <tr key={`header-${group.positionName}`} className="bg-gray-800">
+                    <tr className="bg-gray-800">
                       <td colSpan={TOTAL_COLS - 1} className="px-4 py-2 text-sm font-bold text-white sticky left-0">
                         {group.positionName}
                         <span className="ml-2 text-gray-300 font-normal text-xs">{group.entries.length} fő</span>
@@ -1224,7 +1224,7 @@ export function AllocationTable({
                   )}
                   {group.entries.map(renderEntryRow)}
                   {groupByPosition && renderGroupSubtotal(group)}
-                </>
+                </React.Fragment>
               ))
             )}
           </tbody>
