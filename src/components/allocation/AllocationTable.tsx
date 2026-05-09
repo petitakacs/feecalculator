@@ -113,7 +113,13 @@ export function AllocationTable({
   const [addIsLoan, setAddIsLoan] = useState(false);
   const [addingOne, setAddingOne] = useState(false);
 
-  const [lastRefRate, setLastRefRate] = useState<number | null>(null);
+  const [lastRefRate, setLastRefRate] = useState<number | null>(
+    period.waiterReferenceHourlyRate ?? null
+  );
+  const [refRateInput, setRefRateInput] = useState<string>(
+    period.waiterReferenceHourlyRate != null ? String(period.waiterReferenceHourlyRate) : ""
+  );
+  const [applyingRefRate, setApplyingRefRate] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
 
   // History toggle state
@@ -260,12 +266,40 @@ export function AllocationTable({
       }
       const data = await res.json();
       setLastRefRate(data.waiterReferenceHourlyRateCents);
+      setRefRateInput(String(data.waiterReferenceHourlyRateCents));
       showToast(`Számítás kész. Ref díj: ${formatCurrency(data.waiterReferenceHourlyRateCents)}/óra`, "success");
       await refreshEntries();
     } catch {
       showToast("Hálózati hiba", "error");
     } finally {
       setCalculating(false);
+    }
+  };
+
+  const handleApplyRefRate = async () => {
+    const rateVal = Math.round(parseFloat(refRateInput) || 0);
+    if (rateVal <= 0) { showToast("Adj meg érvényes referencia óradíjat", "error"); return; }
+    setApplyingRefRate(true);
+    try {
+      const res = await fetch(`/api/periods/${period.id}/apply-ref-rate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refRateCents: rateVal }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast(err.error ?? "Alkalmazás sikertelen", "error");
+        return;
+      }
+      const data = await res.json();
+      setLastRefRate(data.waiterReferenceHourlyRate);
+      setRefRateInput(String(data.waiterReferenceHourlyRate));
+      showToast(`Referencia óradíj alkalmazva: ${formatCurrency(data.waiterReferenceHourlyRate)}/óra`, "success");
+      await refreshEntries();
+    } catch {
+      showToast("Hálózati hiba", "error");
+    } finally {
+      setApplyingRefRate(false);
     }
   };
 
@@ -900,7 +934,7 @@ export function AllocationTable({
   return (
     <div className="space-y-4">
       {/* Summary Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
           <div className="text-xs text-blue-600 font-medium uppercase tracking-wide">Felosztható egyenleg</div>
           <div className={`text-xl font-bold mt-1 ${period.distributableBalance < 0 ? "text-red-600" : "text-blue-700"}`}>
@@ -918,6 +952,12 @@ export function AllocationTable({
         <div className={`${closingBalance < 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"} border rounded-lg px-4 py-3`}>
           <div className={`text-xs font-medium uppercase tracking-wide ${closingBalance < 0 ? "text-red-600" : "text-green-600"}`}>Várható záróegyenleg</div>
           <div className={`text-xl font-bold mt-1 ${closingBalance < 0 ? "text-red-700" : "text-green-700"}`}>{formatCurrency(closingBalance)}</div>
+        </div>
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
+          <div className="text-xs text-indigo-600 font-medium uppercase tracking-wide">Ref. pincér óradíj</div>
+          <div className="text-xl font-bold mt-1 text-indigo-700">
+            {lastRefRate != null ? `${formatCurrency(lastRefRate)}/óra` : <span className="text-gray-400 text-base font-normal">—</span>}
+          </div>
         </div>
       </div>
 
@@ -1001,6 +1041,28 @@ export function AllocationTable({
             >
               {calculating ? "Számítás..." : "Számítás"}
             </button>
+
+            {/* Reference rate override widget */}
+            <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3 ml-1">
+              <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Ref. pincér óradíj:</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={refRateInput !== "" ? formatInteger(refRateInput) : ""}
+                onChange={(e) => setRefRateInput(parseFormattedInteger(e.target.value))}
+                placeholder="Ft/óra"
+                className="w-24 text-right border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+              <span className="text-xs text-gray-500">Ft/óra</span>
+              <button
+                onClick={handleApplyRefRate}
+                disabled={applyingRefRate || !refRateInput}
+                className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-40 font-medium whitespace-nowrap"
+                title="Alkalmazza a referencia óradíjat minden bejegyzésre"
+              >
+                {applyingRefRate ? "..." : "Alkalmaz"}
+              </button>
+            </div>
           </>
         )}
 

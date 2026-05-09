@@ -156,6 +156,7 @@ export async function POST(
     where: { id: id },
     data: {
       targetDistributionTotal: result.targetDistributionTotalCents,
+      waiterReferenceHourlyRate: result.waiterReferenceHourlyRateCents,
     },
   });
 

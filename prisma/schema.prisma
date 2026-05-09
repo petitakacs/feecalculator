@@ -201,6 +201,7 @@ model MonthlyPeriod {
   targetDistributionTotal   Int                    @default(0)
   approvedDistributionTotal Int                    @default(0)
   closingBalance            Int                    @default(0)
+  waiterReferenceHourlyRate Int?
   status                    PeriodStatus           @default(DRAFT)
   notes                     String?                @db.Text
   lockedAt                  DateTime?

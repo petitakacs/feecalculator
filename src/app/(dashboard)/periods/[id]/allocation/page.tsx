@@ -113,6 +113,7 @@ export default async function AllocationPage({
           targetDistributionTotal: period.targetDistributionTotal,
           approvedDistributionTotal: period.approvedDistributionTotal,
           closingBalance: period.closingBalance,
+          waiterReferenceHourlyRate: period.waiterReferenceHourlyRate ?? undefined,
           seasonId: period.seasonId,
           season: {
             id: period.season.id,
