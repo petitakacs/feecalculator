@@ -82,3 +82,40 @@ export async function PATCH(
 
   return NextResponse.json(updated);
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(session.user.role, "periods:delete")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const period = await prisma.monthlyPeriod.findUnique({ where: { id } });
+  if (!period) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (period.status !== "DRAFT") {
+    return NextResponse.json(
+      { error: "Csak DRAFT státuszú periódus törölhető" },
+      { status: 422 }
+    );
+  }
+
+  // Delete in correct order due to relation constraints
+  await prisma.auditLog.deleteMany({ where: { periodId: id } });
+  await prisma.periodApproval.deleteMany({ where: { periodId: id } });
+  await prisma.monthlyEmployeeEntry.deleteMany({ where: { periodId: id } });
+  await prisma.monthlyPeriod.delete({ where: { id } });
+
+  await createAuditLog({
+    userId: session.user.id,
+    action: "DELETE",
+    entityType: "MonthlyPeriod",
+    entityId: id,
+    before: { month: period.month, year: period.year, status: period.status },
+  });
+
+  return NextResponse.json({ success: true });
+}

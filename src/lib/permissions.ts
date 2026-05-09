@@ -4,6 +4,7 @@ export type Permission =
   | "users:manage"
   | "periods:read"
   | "periods:write"
+  | "periods:delete"
   | "periods:submit"
   | "periods:approve"
   | "periods:close"
@@ -27,6 +28,7 @@ const rolePermissions: Record<Role, Permission[]> = {
     "users:manage",
     "periods:read",
     "periods:write",
+    "periods:delete",
     "periods:submit",
     "periods:approve",
     "periods:close",
@@ -48,6 +50,7 @@ const rolePermissions: Record<Role, Permission[]> = {
   BUSINESS_UNIT_LEAD: [
     "periods:read",
     "periods:write",
+    "periods:delete",
     "periods:submit",
     "periods:approve",
     "periods:close",

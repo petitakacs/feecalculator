@@ -5,6 +5,8 @@ import Link from "next/link";
 import { formatPeriod, formatCurrency } from "@/lib/format";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { CreatePeriodButton } from "@/components/periods/CreatePeriodButton";
+import { DeletePeriodButton } from "@/components/periods/DeletePeriodButton";
+import { hasPermission } from "@/lib/permissions";
 
 export default async function PeriodsPage() {
   const session = await getServerSession(authOptions);
@@ -18,6 +20,8 @@ export default async function PeriodsPage() {
   const seasons = await prisma.season.findMany({
     where: { active: true },
   });
+
+  const canDelete = hasPermission(session.user.role, "periods:delete");
 
   return (
     <div className="space-y-6">
@@ -63,12 +67,20 @@ export default async function PeriodsPage() {
                   <StatusBadge status={period.status} />
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <Link
-                    href={`/periods/${period.id}`}
-                    className="text-blue-600 hover:text-blue-800 font-medium"
-                  >
-                    View
-                  </Link>
+                  <div className="flex items-center justify-end gap-3">
+                    {canDelete && period.status === "DRAFT" && (
+                      <DeletePeriodButton
+                        periodId={period.id}
+                        periodLabel={formatPeriod(period.month, period.year)}
+                      />
+                    )}
+                    <Link
+                      href={`/periods/${period.id}`}
+                      className="text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Megnyit
+                    </Link>
+                  </div>
                 </td>
               </tr>
             ))}
