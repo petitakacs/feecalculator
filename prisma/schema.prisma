@@ -82,6 +82,21 @@ model Position {
   employees                Employee[]
   seasonPositionRules      SeasonPositionRule[]
   monthlyEntries           MonthlyEmployeeEntry[]
+  variations               PositionVariation[]
+}
+
+model PositionVariation {
+  id              String   @id @default(cuid())
+  positionId      String
+  position        Position @relation(fields: [positionId], references: [id])
+  name            String   // e.g. "Diák", "Új belépő"
+  multiplierDelta Decimal  // additive delta from base, e.g. -0.10
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([positionId, name])
+  @@index([positionId])
 }
 
 // ─── Employees ────────────────────────────────────────────────────────────────

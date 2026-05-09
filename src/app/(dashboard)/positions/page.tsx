@@ -9,13 +9,16 @@ export default async function PositionsPage() {
 
   const positions = await prisma.position.findMany({
     orderBy: { name: "asc" },
-    include: { _count: { select: { employees: true } } },
+    include: {
+      _count: { select: { employees: true } },
+      variations: { orderBy: { name: "asc" } },
+    },
   });
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Positions</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Pozíciók</h1>
       </div>
       <PositionsManager
         positions={positions.map((p) => ({
@@ -30,6 +33,12 @@ export default async function PositionsPage() {
           createdAt: p.createdAt.toISOString(),
           updatedAt: p.updatedAt.toISOString(),
           employeeCount: p._count.employees,
+          variations: p.variations.map((v) => ({
+            id: v.id,
+            name: v.name,
+            multiplierDelta: Number(v.multiplierDelta),
+            active: v.active,
+          })),
         }))}
         userRole={session.user.role}
       />
