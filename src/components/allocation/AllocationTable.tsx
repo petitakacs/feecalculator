@@ -588,7 +588,21 @@ export function AllocationTable({
         </td>
         {!groupByPosition && (
           <td className="px-3 py-2 text-gray-500 border-r border-gray-100 text-xs">
-            {entry.position?.name ?? entry.positionId}
+            <div>{entry.position?.name ?? entry.positionId}</div>
+            {(() => {
+              const base = Number(entry.position?.multiplier ?? 1);
+              const delta = entry.employee?.variation?.multiplierDelta != null
+                ? Number(entry.employee.variation.multiplierDelta) : 0;
+              const eff = base + delta;
+              return (
+                <div className="text-gray-400 font-mono mt-0.5">
+                  {delta !== 0
+                    ? <span title={`Alap: ${base.toFixed(2)}× ${delta >= 0 ? "+" : ""}${delta.toFixed(2)}×`}>{eff.toFixed(2)}×</span>
+                    : <span>{eff.toFixed(2)}×</span>
+                  }
+                </div>
+              );
+            })()}
           </td>
         )}
 
@@ -610,14 +624,24 @@ export function AllocationTable({
         {/* Célértékek */}
         <td className="px-3 py-1.5 text-right text-green-700 text-xs">
           {entry.targetNetHourlyServiceCharge != null ? (() => {
-            const multiplier = entry.position?.multiplier ?? 1;
+            const baseMultiplier = Number(entry.position?.multiplier ?? 1);
+            const variationDelta = entry.employee?.variation?.multiplierDelta != null
+              ? Number(entry.employee.variation.multiplierDelta) : 0;
+            const multiplier = baseMultiplier + variationDelta;
             const refRate = multiplier !== 0
               ? Math.round(entry.targetNetHourlyServiceCharge / multiplier)
               : (lastRefRate ?? 0);
+            const multiplierLines = variationDelta !== 0
+              ? [
+                  <span key="mb">Alap szorzó: <b>{baseMultiplier.toFixed(2)}×</b></span>,
+                  <span key="mv">{entry.employee?.variation?.name}: <b>{variationDelta >= 0 ? "+" : ""}{variationDelta.toFixed(2)}×</b></span>,
+                  <span key="me">Szorzó: <b>{multiplier.toFixed(2)}×</b></span>,
+                ]
+              : [<span key="m">Szorzó: <b>{multiplier.toFixed(2)}×</b></span>];
             return (
               <Tooltip lines={[
                 <span key="r">Ref. óradíj: <b>{formatCurrency(refRate)}/óra</b></span>,
-                <span key="m">Szorzó: <b>{multiplier}×</b></span>,
+                ...multiplierLines,
                 <span key="eq" className="border-t border-gray-600 block mt-1 pt-1">= {formatCurrency(entry.targetNetHourlyServiceCharge)}/óra</span>,
               ]}>
                 {formatCurrency(entry.targetNetHourlyServiceCharge)}
@@ -629,14 +653,24 @@ export function AllocationTable({
           {entry.targetServiceChargeAmount != null ? (() => {
             const hourlyRate = entry.targetNetHourlyServiceCharge ?? 0;
             const hours = Number(entry.workedHours);
-            const multiplier = entry.position?.multiplier ?? 1;
+            const baseMultiplier = Number(entry.position?.multiplier ?? 1);
+            const variationDelta = entry.employee?.variation?.multiplierDelta != null
+              ? Number(entry.employee.variation.multiplierDelta) : 0;
+            const multiplier = baseMultiplier + variationDelta;
             const refRate = multiplier !== 0
               ? Math.round(hourlyRate / multiplier)
               : (lastRefRate ?? 0);
+            const multiplierLines = variationDelta !== 0
+              ? [
+                  <span key="mb">Alap szorzó: <b>{baseMultiplier.toFixed(2)}×</b></span>,
+                  <span key="mv">{entry.employee?.variation?.name}: <b>{variationDelta >= 0 ? "+" : ""}{variationDelta.toFixed(2)}×</b></span>,
+                  <span key="me">Szorzó: <b>{multiplier.toFixed(2)}×</b></span>,
+                ]
+              : [<span key="m">Szorzó: <b>{multiplier.toFixed(2)}×</b></span>];
             return (
               <Tooltip lines={[
                 <span key="r">Ref. óradíj: <b>{formatCurrency(refRate)}/óra</b></span>,
-                <span key="m">Szorzó: <b>{multiplier}×</b></span>,
+                ...multiplierLines,
                 <span key="h">Célóradíj: <b>{formatCurrency(hourlyRate)}/óra</b></span>,
                 <span key="eq" className="border-t border-gray-600 block mt-1 pt-1">{hours} óra × {formatCurrency(hourlyRate)}/óra</span>,
                 <span key="res">= <b>{formatCurrency(entry.targetServiceChargeAmount)}</b></span>,
