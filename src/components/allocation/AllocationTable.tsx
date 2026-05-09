@@ -39,6 +39,16 @@ function entryToRowValues(entry: MonthlyEmployeeEntry): RowValues {
   };
 }
 
+function calcBaseSalary(entry: MonthlyEmployeeEntry, workedHoursStr: string): number {
+  const emp = entry.employee;
+  if (!emp) return 0;
+  if (emp.baseSalaryType === "HOURLY") {
+    const hours = parseFloat(workedHoursStr) || 0;
+    return Math.round(emp.baseSalaryAmount * hours);
+  }
+  return Math.round(emp.baseSalaryAmount);
+}
+
 export function AllocationTable({
   period,
   initialEntries,
@@ -58,18 +68,15 @@ export function AllocationTable({
   const [calculating, setCalculating] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [addingAll, setAddingAll] = useState(false);
+  const [groupByPosition, setGroupByPosition] = useState(false);
 
-  // Track latest row values via ref so blur handler sees current values
   const rowValuesRef = useRef(rowValues);
   rowValuesRef.current = rowValues;
 
-  const isLocked =
-    period.status === "CLOSED" || period.status === "APPROVED";
+  const isLocked = period.status === "CLOSED" || period.status === "APPROVED";
   const canWrite = hasPermission(userRole, "periods:write");
-  const canApprove =
-    userRole === "ADMIN" || userRole === "BUSINESS_UNIT_LEAD";
+  const canApprove = userRole === "ADMIN" || userRole === "BUSINESS_UNIT_LEAD";
   const canSubmit = hasPermission(userRole, "periods:submit");
-
   const editable = !isLocked && canWrite;
 
   // ---- Derived summary numbers ----
@@ -270,7 +277,6 @@ export function AllocationTable({
         return;
       }
       const result = await res.json();
-      // Refresh entries list
       const entriesRes = await fetch(`/api/periods/${period.id}/entries`);
       if (entriesRes.ok) {
         const updatedEntries: MonthlyEmployeeEntry[] = await entriesRes.json();
@@ -318,10 +324,234 @@ export function AllocationTable({
         />
       );
     }
-    // read-only display
     if (type === "text") return <span>{value}</span>;
     if (value === "") return <span className="text-gray-300">-</span>;
     return <span>{value}</span>;
+  };
+
+  // ---- Grouping logic ----
+  // Total column count for colSpan in group headers / empty rows
+  const TOTAL_COLS = 18;
+
+  type EntryGroup = {
+    positionName: string;
+    entries: MonthlyEmployeeEntry[];
+  };
+
+  const groupedEntries: EntryGroup[] = (() => {
+    if (!groupByPosition) {
+      return [{ positionName: "", entries }];
+    }
+    const map = new Map<string, MonthlyEmployeeEntry[]>();
+    for (const e of entries) {
+      const key = e.position?.name ?? "Ismeretlen pozíció";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(e);
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "hu"))
+      .map(([positionName, entries]) => ({ positionName, entries }));
+  })();
+
+  // ---- Row renderer ----
+  const renderEntryRow = (entry: MonthlyEmployeeEntry) => {
+    const isSaving = savingRows.has(entry.id);
+    const isDirty = dirtyRows.has(entry.id);
+    const finalTarget =
+      (entry.targetServiceChargeAmount ?? 0) +
+      entry.bonus +
+      entry.overtimePayment +
+      entry.manualCorrection;
+    const isOverride = entry.overrideFlag;
+    const vals = rowValues[entry.id];
+    const baseSalary = calcBaseSalary(entry, vals?.workedHours ?? String(entry.workedHours));
+    const approvedOrTarget = entry.finalApprovedAmount != null ? entry.finalApprovedAmount : finalTarget;
+    const actualEarnings = baseSalary + approvedOrTarget;
+
+    return (
+      <tr
+        key={entry.id}
+        className={`${
+          isOverride
+            ? "bg-yellow-50"
+            : isDirty
+            ? "bg-amber-50"
+            : "hover:bg-gray-50"
+        } ${isDirty ? "border-l-4 border-l-amber-400" : ""}`}
+      >
+        {/* Sticky name */}
+        <td className="px-3 py-2 font-medium sticky left-0 bg-inherit z-10 border-r border-gray-100">
+          {entry.employee?.name ?? entry.employeeId}
+        </td>
+        {!groupByPosition && (
+          <td className="px-3 py-2 text-gray-500 border-r border-gray-100">
+            {entry.position?.name ?? entry.positionId}
+          </td>
+        )}
+
+        {/* Bevitel */}
+        <td className="px-2 py-1.5 text-right bg-blue-50/30">
+          {inputCell(entry, "workedHours", "w-16")}
+        </td>
+        <td className="px-2 py-1.5 text-right bg-blue-50/30">
+          {inputCell(entry, "overtimeHours", "w-16")}
+        </td>
+        <td className="px-2 py-1.5 text-right bg-blue-50/30 border-r border-blue-100">
+          {inputCell(entry, "netWaiterSales", "w-20", "number", "0")}
+        </td>
+
+        {/* Számított */}
+        <td className="px-3 py-1.5 text-right text-gray-600">
+          {entry.calculatedGrossServiceCharge != null
+            ? formatCurrency(entry.calculatedGrossServiceCharge)
+            : <span className="text-gray-300">-</span>}
+        </td>
+        <td className="px-3 py-1.5 text-right text-gray-600 border-r border-gray-100">
+          {entry.calculatedNetServiceCharge != null
+            ? formatCurrency(entry.calculatedNetServiceCharge)
+            : <span className="text-gray-300">-</span>}
+        </td>
+
+        {/* Célértékek */}
+        <td className="px-3 py-1.5 text-right text-green-700">
+          {entry.targetNetHourlyServiceCharge != null
+            ? formatCurrency(entry.targetNetHourlyServiceCharge)
+            : <span className="text-gray-300">-</span>}
+        </td>
+        <td className="px-3 py-1.5 text-right font-medium text-green-700 border-r border-green-100">
+          {entry.targetServiceChargeAmount != null
+            ? formatCurrency(entry.targetServiceChargeAmount)
+            : <span className="text-gray-300">-</span>}
+        </td>
+
+        {/* Kiegészítők */}
+        <td className="px-2 py-1.5 text-right bg-yellow-50/40">
+          {inputCell(entry, "bonus", "w-16")}
+        </td>
+        <td className="px-2 py-1.5 text-right bg-yellow-50/40">
+          {inputCell(entry, "overtimePayment", "w-16")}
+        </td>
+        <td className="px-2 py-1.5 text-right bg-yellow-50/40 border-r border-yellow-100">
+          {inputCell(entry, "manualCorrection", "w-16")}
+        </td>
+
+        {/* Összesítés */}
+        <td className="px-3 py-1.5 text-right font-semibold text-purple-700">
+          {formatCurrency(finalTarget)}
+        </td>
+        <td className="px-2 py-1.5 text-right bg-purple-50/30 border-r border-purple-100">
+          {inputCell(entry, "finalApprovedAmount", "w-20", "number", "= cél")}
+        </td>
+
+        {/* Kereset */}
+        <td className="px-3 py-1.5 text-right text-orange-700 bg-orange-50/30">
+          {formatCurrency(baseSalary)}
+        </td>
+        <td className="px-3 py-1.5 text-right font-semibold text-orange-800 bg-orange-50/30 border-r border-orange-100">
+          {formatCurrency(actualEarnings)}
+        </td>
+
+        {/* Notes */}
+        <td className="px-2 py-1.5 text-gray-500 max-w-[120px] truncate">
+          {editable ? (
+            <input
+              type="text"
+              value={rowValues[entry.id]?.notes ?? ""}
+              onChange={(e) => updateField(entry.id, "notes", e.target.value)}
+              onBlur={() => handleBlurSave(entry)}
+              className="w-28 border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+          ) : (
+            entry.notes ?? ""
+          )}
+        </td>
+
+        {/* Status */}
+        <td className="px-2 py-1.5 text-center min-w-[80px]">
+          {isSaving ? (
+            <span className="text-xs text-blue-500 italic">mentés...</span>
+          ) : isOverride ? (
+            <span className="px-1.5 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-medium">
+              Felülbírálat
+            </span>
+          ) : null}
+        </td>
+      </tr>
+    );
+  };
+
+  // ---- Group subtotal row ----
+  const renderGroupSubtotal = (group: EntryGroup) => {
+    const grpEntries = group.entries;
+    const grpTarget = grpEntries.reduce(
+      (s, e) =>
+        s +
+        (e.targetServiceChargeAmount ?? 0) +
+        e.bonus +
+        e.overtimePayment +
+        e.manualCorrection,
+      0
+    );
+    const grpApproved = grpEntries.reduce((s, e) => s + (e.finalApprovedAmount ?? 0), 0);
+    const grpBaseSalary = grpEntries.reduce((s, e) => {
+      const vals = rowValues[e.id];
+      return s + calcBaseSalary(e, vals?.workedHours ?? String(e.workedHours));
+    }, 0);
+    const grpActual = grpEntries.reduce((s, e) => {
+      const vals = rowValues[e.id];
+      const base = calcBaseSalary(e, vals?.workedHours ?? String(e.workedHours));
+      const finalTarget =
+        (e.targetServiceChargeAmount ?? 0) + e.bonus + e.overtimePayment + e.manualCorrection;
+      const approvedOrTarget = e.finalApprovedAmount != null ? e.finalApprovedAmount : finalTarget;
+      return s + base + approvedOrTarget;
+    }, 0);
+
+    return (
+      <tr key={`subtotal-${group.positionName}`} className="bg-gray-100 border-t border-b border-gray-300 text-xs font-semibold">
+        <td className="px-3 py-1.5 sticky left-0 bg-gray-100 border-r border-gray-200 text-gray-600 italic" colSpan={groupByPosition ? 4 : 5}>
+          Részösszeg: {group.positionName} ({grpEntries.length} fő)
+        </td>
+        <td className="px-3 py-1.5 text-right text-blue-700">
+          {formatHours(grpEntries.reduce((s, e) => s + Number(e.workedHours), 0))}
+        </td>
+        <td className="px-3 py-1.5 text-right text-blue-700">
+          {formatHours(grpEntries.reduce((s, e) => s + Number(e.overtimeHours), 0))}
+        </td>
+        <td className="px-3 py-1.5 border-r border-blue-100" />
+        <td className="px-3 py-1.5 text-right text-gray-600">
+          {formatCurrency(grpEntries.reduce((s, e) => s + (e.calculatedGrossServiceCharge ?? 0), 0))}
+        </td>
+        <td className="px-3 py-1.5 text-right text-gray-600 border-r border-gray-200">
+          {formatCurrency(grpEntries.reduce((s, e) => s + (e.calculatedNetServiceCharge ?? 0), 0))}
+        </td>
+        <td className="px-3 py-1.5" />
+        <td className="px-3 py-1.5 text-right text-green-700 border-r border-green-100">
+          {formatCurrency(grpEntries.reduce((s, e) => s + (e.targetServiceChargeAmount ?? 0), 0))}
+        </td>
+        <td className="px-3 py-1.5 text-right text-yellow-700">
+          {formatCurrency(grpEntries.reduce((s, e) => s + e.bonus, 0))}
+        </td>
+        <td className="px-3 py-1.5 text-right text-yellow-700">
+          {formatCurrency(grpEntries.reduce((s, e) => s + e.overtimePayment, 0))}
+        </td>
+        <td className="px-3 py-1.5 text-right text-yellow-700 border-r border-yellow-100">
+          {formatCurrency(grpEntries.reduce((s, e) => s + e.manualCorrection, 0))}
+        </td>
+        <td className="px-3 py-1.5 text-right text-purple-700">
+          {formatCurrency(grpTarget)}
+        </td>
+        <td className="px-3 py-1.5 text-right text-purple-700 border-r border-purple-100">
+          {formatCurrency(grpApproved)}
+        </td>
+        <td className="px-3 py-1.5 text-right text-orange-700">
+          {formatCurrency(grpBaseSalary)}
+        </td>
+        <td className="px-3 py-1.5 text-right text-orange-800 border-r border-orange-100">
+          {formatCurrency(grpActual)}
+        </td>
+        <td colSpan={2} />
+      </tr>
+    );
   };
 
   return (
@@ -362,7 +592,6 @@ export function AllocationTable({
           <>
             {addableEmployees.length > 0 && (
               <>
-                {/* One-click add all */}
                 <button
                   onClick={handleAddAllEmployees}
                   disabled={addingAll}
@@ -373,7 +602,6 @@ export function AllocationTable({
                     : `Összes hozzáadása (${addableEmployees.length} dolgozó)`}
                 </button>
 
-                {/* Individual add dropdown */}
                 <select
                   onChange={(e) => {
                     if (e.target.value) {
@@ -404,6 +632,18 @@ export function AllocationTable({
             </button>
           </>
         )}
+
+        {/* Grouping toggle */}
+        <button
+          onClick={() => setGroupByPosition((v) => !v)}
+          className={`px-3 py-1.5 text-sm rounded-md border font-medium transition-colors ${
+            groupByPosition
+              ? "bg-gray-800 text-white border-gray-800"
+              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          {groupByPosition ? "Csoportosítás: BE" : "Csoportosítás: KI"} (munkakör)
+        </button>
 
         <div className="ml-auto flex items-center gap-2">
           <ExportButton periodId={period.id} />
@@ -463,12 +703,14 @@ export function AllocationTable({
               >
                 Dolgozó
               </th>
-              <th
-                rowSpan={2}
-                className="px-3 py-2 text-left font-semibold text-gray-700 bg-gray-100 border-b border-r border-gray-200"
-              >
-                Pozíció
-              </th>
+              {!groupByPosition && (
+                <th
+                  rowSpan={2}
+                  className="px-3 py-2 text-left font-semibold text-gray-700 bg-gray-100 border-b border-r border-gray-200"
+                >
+                  Pozíció
+                </th>
+              )}
               {/* Group 1: Bevitel */}
               <th
                 colSpan={3}
@@ -503,6 +745,13 @@ export function AllocationTable({
                 className="px-3 py-1 text-center text-xs font-bold text-purple-700 bg-purple-100 border-b border-purple-200"
               >
                 Összesítés
+              </th>
+              {/* Group 6: Kereset */}
+              <th
+                colSpan={2}
+                className="px-3 py-1 text-center text-xs font-bold text-orange-700 bg-orange-100 border-b border-orange-200"
+              >
+                Kereset
               </th>
               {/* Notes / status */}
               <th
@@ -560,148 +809,66 @@ export function AllocationTable({
               <th className="px-3 py-1.5 text-right font-medium text-purple-600 bg-purple-50 border-b border-purple-100 border-r border-purple-100">
                 Jóváhagyott
               </th>
+              {/* Kereset sub-cols */}
+              <th className="px-3 py-1.5 text-right font-medium text-orange-600 bg-orange-50 border-b border-orange-100">
+                Alapbér
+              </th>
+              <th className="px-3 py-1.5 text-right font-medium text-orange-700 bg-orange-50 border-b border-orange-100 border-r border-orange-100">
+                Tényleges kereset
+              </th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-gray-100">
-            {entries.map((entry) => {
-              const isSaving = savingRows.has(entry.id);
-              const isDirty = dirtyRows.has(entry.id);
-              const finalTarget =
-                (entry.targetServiceChargeAmount ?? 0) +
-                entry.bonus +
-                entry.overtimePayment +
-                entry.manualCorrection;
-              const isOverride = entry.overrideFlag;
-
-              return (
-                <tr
-                  key={entry.id}
-                  className={`${
-                    isOverride
-                      ? "bg-yellow-50"
-                      : isDirty
-                      ? "bg-amber-50"
-                      : "hover:bg-gray-50"
-                  } ${isDirty ? "border-l-4 border-l-amber-400" : ""}`}
-                >
-                  {/* Sticky name */}
-                  <td className="px-3 py-2 font-medium sticky left-0 bg-inherit z-10 border-r border-gray-100">
-                    {entry.employee?.name ?? entry.employeeId}
-                  </td>
-                  <td className="px-3 py-2 text-gray-500 border-r border-gray-100">
-                    {entry.position?.name ?? entry.positionId}
-                  </td>
-
-                  {/* Bevitel */}
-                  <td className="px-2 py-1.5 text-right bg-blue-50/30">
-                    {inputCell(entry, "workedHours", "w-16")}
-                  </td>
-                  <td className="px-2 py-1.5 text-right bg-blue-50/30">
-                    {inputCell(entry, "overtimeHours", "w-16")}
-                  </td>
-                  <td className="px-2 py-1.5 text-right bg-blue-50/30 border-r border-blue-100">
-                    {inputCell(entry, "netWaiterSales", "w-20", "number", "0")}
-                  </td>
-
-                  {/* Számított */}
-                  <td className="px-3 py-1.5 text-right text-gray-600">
-                    {entry.calculatedGrossServiceCharge != null
-                      ? formatCurrency(entry.calculatedGrossServiceCharge)
-                      : <span className="text-gray-300">-</span>}
-                  </td>
-                  <td className="px-3 py-1.5 text-right text-gray-600 border-r border-gray-100">
-                    {entry.calculatedNetServiceCharge != null
-                      ? formatCurrency(entry.calculatedNetServiceCharge)
-                      : <span className="text-gray-300">-</span>}
-                  </td>
-
-                  {/* Célértékek */}
-                  <td className="px-3 py-1.5 text-right text-green-700">
-                    {entry.targetNetHourlyServiceCharge != null
-                      ? formatCurrency(entry.targetNetHourlyServiceCharge)
-                      : <span className="text-gray-300">-</span>}
-                  </td>
-                  <td className="px-3 py-1.5 text-right font-medium text-green-700 border-r border-green-100">
-                    {entry.targetServiceChargeAmount != null
-                      ? formatCurrency(entry.targetServiceChargeAmount)
-                      : <span className="text-gray-300">-</span>}
-                  </td>
-
-                  {/* Kiegészítők */}
-                  <td className="px-2 py-1.5 text-right bg-yellow-50/40">
-                    {inputCell(entry, "bonus", "w-16")}
-                  </td>
-                  <td className="px-2 py-1.5 text-right bg-yellow-50/40">
-                    {inputCell(entry, "overtimePayment", "w-16")}
-                  </td>
-                  <td className="px-2 py-1.5 text-right bg-yellow-50/40 border-r border-yellow-100">
-                    {inputCell(entry, "manualCorrection", "w-16")}
-                  </td>
-
-                  {/* Összesítés */}
-                  <td className="px-3 py-1.5 text-right font-semibold text-purple-700">
-                    {formatCurrency(finalTarget)}
-                  </td>
-                  <td className="px-2 py-1.5 text-right bg-purple-50/30 border-r border-purple-100">
-                    {inputCell(entry, "finalApprovedAmount", "w-20", "number", "= cél")}
-                  </td>
-
-                  {/* Notes */}
-                  <td className="px-2 py-1.5 text-gray-500 max-w-[120px] truncate">
-                    {editable ? (
-                      <input
-                        type="text"
-                        value={rowValues[entry.id]?.notes ?? ""}
-                        onChange={(e) => updateField(entry.id, "notes", e.target.value)}
-                        onBlur={() => handleBlurSave(entry)}
-                        className="w-28 border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-                      />
-                    ) : (
-                      entry.notes ?? ""
-                    )}
-                  </td>
-
-                  {/* Status column: saving indicator + override badge */}
-                  <td className="px-2 py-1.5 text-center min-w-[80px]">
-                    {isSaving ? (
-                      <span className="text-xs text-blue-500 italic">mentés...</span>
-                    ) : isOverride ? (
-                      <span className="px-1.5 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-medium">
-                        Felülbírálat
-                      </span>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
-
-            {entries.length === 0 && (
+            {entries.length === 0 ? (
               <tr>
-                <td colSpan={16} className="px-4 py-10 text-center text-gray-400">
+                <td colSpan={TOTAL_COLS} className="px-4 py-10 text-center text-gray-400">
                   <div className="text-base font-medium mb-1">Még nincsenek bejegyzések</div>
                   <div className="text-sm">
                     Kattints az &ldquo;Összes hozzáadása&rdquo; gombra, vagy adj hozzá dolgozókat egyenként.
                   </div>
                 </td>
               </tr>
+            ) : (
+              groupedEntries.map((group) => (
+                <>
+                  {groupByPosition && (
+                    <tr key={`header-${group.positionName}`} className="bg-gray-800">
+                      <td
+                        colSpan={TOTAL_COLS - 1}
+                        className="px-4 py-2 text-sm font-bold text-white sticky left-0"
+                      >
+                        {group.positionName}
+                        <span className="ml-2 text-gray-300 font-normal text-xs">
+                          {group.entries.length} fő
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  {group.entries.map(renderEntryRow)}
+                  {groupByPosition && renderGroupSubtotal(group)}
+                </>
+              ))
             )}
           </tbody>
 
           {entries.length > 0 && (
-            <tfoot className="bg-gray-50 border-t-2 border-gray-200 font-semibold text-xs">
+            <tfoot className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-xs">
               <tr>
-                <td className="px-3 py-2 sticky left-0 bg-gray-50 border-r border-gray-200" colSpan={2}>
+                <td
+                  className="px-3 py-2 sticky left-0 bg-gray-50 border-r border-gray-200"
+                  colSpan={groupByPosition ? 1 : 2}
+                >
                   Összesítés
                 </td>
                 {/* Bevitel totals */}
                 <td className="px-3 py-2 text-right text-blue-700">
-                  {formatHours(entries.reduce((s, e) => s + e.workedHours, 0))}
+                  {formatHours(entries.reduce((s, e) => s + Number(e.workedHours), 0))}
                 </td>
                 <td className="px-3 py-2 text-right text-blue-700">
-                  {formatHours(entries.reduce((s, e) => s + e.overtimeHours, 0))}
+                  {formatHours(entries.reduce((s, e) => s + Number(e.overtimeHours), 0))}
                 </td>
-                <td className="px-3 py-2 border-r border-blue-100"></td>
+                <td className="px-3 py-2 border-r border-blue-100" />
                 {/* Számított totals */}
                 <td className="px-3 py-2 text-right text-gray-600">
                   {formatCurrency(entries.reduce((s, e) => s + (e.calculatedGrossServiceCharge ?? 0), 0))}
@@ -710,7 +877,7 @@ export function AllocationTable({
                   {formatCurrency(entries.reduce((s, e) => s + (e.calculatedNetServiceCharge ?? 0), 0))}
                 </td>
                 {/* Célértékek totals */}
-                <td className="px-3 py-2"></td>
+                <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right text-green-700 border-r border-green-100">
                   {formatCurrency(entries.reduce((s, e) => s + (e.targetServiceChargeAmount ?? 0), 0))}
                 </td>
@@ -740,6 +907,31 @@ export function AllocationTable({
                 </td>
                 <td className="px-3 py-2 text-right text-purple-700 border-r border-purple-100">
                   {formatCurrency(entries.reduce((s, e) => s + (e.finalApprovedAmount ?? 0), 0))}
+                </td>
+                {/* Kereset totals */}
+                <td className="px-3 py-2 text-right text-orange-700">
+                  {formatCurrency(
+                    entries.reduce((s, e) => {
+                      const vals = rowValues[e.id];
+                      return s + calcBaseSalary(e, vals?.workedHours ?? String(e.workedHours));
+                    }, 0)
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right text-orange-800 border-r border-orange-100">
+                  {formatCurrency(
+                    entries.reduce((s, e) => {
+                      const vals = rowValues[e.id];
+                      const base = calcBaseSalary(e, vals?.workedHours ?? String(e.workedHours));
+                      const finalTarget =
+                        (e.targetServiceChargeAmount ?? 0) +
+                        e.bonus +
+                        e.overtimePayment +
+                        e.manualCorrection;
+                      const approvedOrTarget =
+                        e.finalApprovedAmount != null ? e.finalApprovedAmount : finalTarget;
+                      return s + base + approvedOrTarget;
+                    }, 0)
+                  )}
                 </td>
                 <td colSpan={2} />
               </tr>
