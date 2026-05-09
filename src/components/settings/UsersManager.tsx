@@ -54,9 +54,9 @@ export function UsersManager({
   const [form, setForm] = useState(BLANK_FORM);
   const [creating, setCreating] = useState(false);
 
-  const patchUser = async (id: string, data: Partial<UserRow>) => {
+  const putUser = async (id: string, data: Partial<UserRow>) => {
     const res = await fetch(`/api/users/${id}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
@@ -74,7 +74,7 @@ export function UsersManager({
     }
     setToggling(user.id);
     try {
-      const updated = await patchUser(user.id, { active: !user.active });
+      const updated = await putUser(user.id, { active: !user.active });
       setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
       showToast(updated.active ? `${updated.name} aktiválva` : `${updated.name} inaktiválva`, "success");
     } catch (e) {
@@ -87,7 +87,7 @@ export function UsersManager({
   const handleRoleChange = async (user: UserRow, role: Role) => {
     setEditingRole(user.id);
     try {
-      const updated = await patchUser(user.id, { role });
+      const updated = await putUser(user.id, { role });
       setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
       showToast(`${updated.name} szerepköre módosítva`, "success");
     } catch (e) {

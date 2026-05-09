@@ -3,16 +3,22 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { BusinessRulesManager } from "@/components/settings/BusinessRulesManager";
 import { UsersManager } from "@/components/settings/UsersManager";
-import { formatDate, formatPercent } from "@/lib/format";
+import { TwoFactorSettings } from "@/components/settings/TwoFactorSettings";
 import { hasPermission } from "@/lib/permissions";
 
 export default async function SettingsPage() {
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
-  const rules = await prisma.businessRule.findMany({
-    orderBy: { effectiveFrom: "desc" },
-  });
+  const [rules, currentUser] = await Promise.all([
+    prisma.businessRule.findMany({
+      orderBy: { effectiveFrom: "desc" },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { twoFactorEnabled: true },
+    }),
+  ]);
 
   const canManageUsers = hasPermission(session.user.role, "users:manage");
 
@@ -45,7 +51,7 @@ export default async function SettingsPage() {
       )}
 
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">Business Rules</h2>
+        <h2 className="text-lg font-semibold mb-1">Business Rules</h2>
         <p className="text-sm text-gray-500 mb-6">
           Configure the service charge percentage and employee contribution rate.
         </p>
@@ -62,6 +68,17 @@ export default async function SettingsPage() {
             updatedAt: r.updatedAt.toISOString(),
           }))}
           userRole={session.user.role}
+        />
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold mb-1">Security</h2>
+        <p className="text-sm text-gray-500 mb-6">
+          Manage your account security settings.
+        </p>
+
+        <TwoFactorSettings
+          twoFactorEnabled={currentUser?.twoFactorEnabled ?? false}
         />
       </div>
     </div>
