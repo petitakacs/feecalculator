@@ -4,12 +4,14 @@ import { useState } from "react";
 import { Role } from "@/types";
 import { showToast } from "@/components/ui/toaster";
 import { hasPermission } from "@/lib/permissions";
-import { ChevronRight, ChevronDown, Plus, X } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
+import { ChevronRight, ChevronDown, Plus, X, GripVertical } from "lucide-react";
 
 interface VariationRow {
   id: string;
   name: string;
   multiplierDelta: number;
+  fixedHourlySZD: number | null;
   active: boolean;
 }
 
@@ -17,10 +19,12 @@ interface PositionRow {
   id: string;
   name: string;
   multiplier: number;
+  fixedHourlySZD: number | null;
   eligibleForServiceCharge: boolean;
   defaultOvertimeRule?: string;
   minHourlyServiceCharge?: number;
   maxHourlyServiceCharge?: number;
+  sortOrder: number;
   active: boolean;
   employeeCount: number;
   createdAt: string;
@@ -28,13 +32,52 @@ interface PositionRow {
   variations: VariationRow[];
 }
 
-const DeltaBadge = ({ delta }: { delta: number }) => {
-  if (delta === 0) return <span className="text-xs text-gray-400">±0</span>;
+const RateDisplay = ({ multiplier, fixedHourlySZD }: { multiplier: number; fixedHourlySZD: number | null }) => {
+  if (fixedHourlySZD != null) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-amber-50 text-amber-800 border border-amber-200">
+        Fix: {formatCurrency(fixedHourlySZD)}/óra
+      </span>
+    );
+  }
+  return <span className="font-mono text-gray-700">{multiplier.toFixed(2)}x</span>;
+};
+
+const VariationRateDisplay = ({
+  baseMultiplier,
+  baseFixed,
+  delta,
+  fixedHourlySZD,
+}: {
+  baseMultiplier: number;
+  baseFixed: number | null;
+  delta: number;
+  fixedHourlySZD: number | null;
+}) => {
+  if (fixedHourlySZD != null) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-amber-50 text-amber-800 border border-amber-200">
+        Fix: {formatCurrency(fixedHourlySZD)}/óra
+      </span>
+    );
+  }
   const sign = delta > 0 ? "+" : "";
-  const color = delta > 0 ? "text-emerald-700 bg-emerald-50" : "text-red-700 bg-red-50";
+  const color = delta > 0 ? "text-emerald-700 bg-emerald-50" : delta < 0 ? "text-red-700 bg-red-50" : "text-gray-400";
+  if (delta === 0) {
+    return (
+      <span className={`text-xs ${color}`}>
+        ±0 {baseFixed != null ? `(Fix: ${formatCurrency(baseFixed)})` : `→ ${baseMultiplier.toFixed(2)}x`}
+      </span>
+    );
+  }
   return (
-    <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${color}`}>
-      {sign}{delta.toFixed(2)}x
+    <span className="flex items-center justify-end gap-1.5">
+      <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${color}`}>
+        {sign}{delta.toFixed(2)}x
+      </span>
+      {baseFixed == null && (
+        <span className="text-xs font-mono text-gray-700">= {(baseMultiplier + delta).toFixed(2)}x</span>
+      )}
     </span>
   );
 };
@@ -43,41 +86,43 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
   const [positions, setPositions] = useState(initial);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<Partial<PositionRow>>({});
+  const [editValues, setEditValues] = useState<Partial<PositionRow & { useFixed: boolean }>>({});
   const [adding, setAdding] = useState(false);
-  const [newPos, setNewPos] = useState({ name: "", multiplier: 1.0, eligibleForServiceCharge: true, active: true });
+  const [newPos, setNewPos] = useState({ name: "", multiplier: 1.0, fixedHourlySZD: null as number | null, useFixed: false, eligibleForServiceCharge: true, active: true });
   const [loading, setLoading] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  // Variation state
   const [addingVarFor, setAddingVarFor] = useState<string | null>(null);
-  const [newVar, setNewVar] = useState({ name: "", multiplierDelta: 0 });
+  const [newVar, setNewVar] = useState({ name: "", multiplierDelta: 0, fixedHourlySZD: null as number | null, useFixed: false });
   const [togglingVar, setTogglingVar] = useState<string | null>(null);
   const [deletingVar, setDeletingVar] = useState<string | null>(null);
 
   const canWrite = hasPermission(userRole, "positions:write");
 
   const toggleExpand = (id: string) =>
-    setExpanded((prev) => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
+    setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // ── Position CRUD ────────────────────────────────────────────────────────────
+  // ── Position CRUD ─────────────────────────────────────────────────────────────
 
-  const startEdit = (pos: PositionRow) => { setEditing(pos.id); setEditValues({ ...pos }); };
+  const startEdit = (pos: PositionRow) => {
+    setEditing(pos.id);
+    setEditValues({ ...pos, useFixed: pos.fixedHourlySZD != null });
+  };
 
   const saveEdit = async (id: string) => {
     setLoading(true);
+    const payload = {
+      name: editValues.name,
+      multiplier: editValues.multiplier,
+      fixedHourlySZD: editValues.useFixed ? (editValues.fixedHourlySZD ?? null) : null,
+      eligibleForServiceCharge: editValues.eligibleForServiceCharge,
+    };
     try {
-      const res = await fetch(`/api/positions/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editValues),
-      });
+      const res = await fetch(`/api/positions/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) { showToast(data.error ?? "Mentés sikertelen", "error"); return; }
-      setPositions((prev) => prev.map((p) => p.id === id ? { ...p, ...data, multiplier: Number(data.multiplier) } : p));
+      setPositions((prev) => prev.map((p) => p.id === id ? { ...p, ...data, multiplier: Number(data.multiplier), fixedHourlySZD: data.fixedHourlySZD ?? null } : p));
       setEditing(null);
       showToast("Pozíció frissítve", "success");
     } catch { showToast("Hálózati hiba", "error"); }
@@ -86,17 +131,14 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
 
   const handleCreate = async () => {
     setLoading(true);
+    const payload = { name: newPos.name, multiplier: newPos.multiplier, fixedHourlySZD: newPos.useFixed ? newPos.fixedHourlySZD : null, eligibleForServiceCharge: newPos.eligibleForServiceCharge, active: newPos.active };
     try {
-      const res = await fetch("/api/positions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newPos),
-      });
+      const res = await fetch("/api/positions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) { showToast(data.error ?? "Létrehozás sikertelen", "error"); return; }
-      setPositions((prev) => [...prev, { ...data, multiplier: Number(data.multiplier), employeeCount: 0, variations: [] }]);
+      setPositions((prev) => [...prev, { ...data, multiplier: Number(data.multiplier), fixedHourlySZD: data.fixedHourlySZD ?? null, employeeCount: 0, variations: [] }]);
       setAdding(false);
-      setNewPos({ name: "", multiplier: 1.0, eligibleForServiceCharge: true, active: true });
+      setNewPos({ name: "", multiplier: 1.0, fixedHourlySZD: null, useFixed: false, eligibleForServiceCharge: true, active: true });
       showToast("Pozíció létrehozva", "success");
     } catch { showToast("Hálózati hiba", "error"); }
     finally { setLoading(false); }
@@ -104,38 +146,43 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
 
   const handleTogglePosition = async (pos: PositionRow) => {
     try {
-      const res = await fetch(`/api/positions/${pos.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: !pos.active }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error ?? "Hiba", "error"); return; }
+      const res = await fetch(`/api/positions/${pos.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !pos.active }) });
+      if (!res.ok) { const d = await res.json(); showToast(d.error ?? "Hiba", "error"); return; }
       setPositions((prev) => prev.map((p) => p.id === pos.id ? { ...p, active: !pos.active } : p));
       showToast(pos.active ? `${pos.name} inaktiválva` : `${pos.name} aktiválva`, "success");
     } catch { showToast("Hálózati hiba", "error"); }
   };
 
-  // ── Variation CRUD ───────────────────────────────────────────────────────────
+  // ── Drag reorder ──────────────────────────────────────────────────────────────
+
+  const handleDrop = async (targetId: string) => {
+    if (!dragId || dragId === targetId) { setDragId(null); setDragOverId(null); return; }
+    const reordered = [...positions];
+    const fromIdx = reordered.findIndex((p) => p.id === dragId);
+    const toIdx = reordered.findIndex((p) => p.id === targetId);
+    const [item] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, item);
+    setPositions(reordered);
+    setDragId(null);
+    setDragOverId(null);
+    try {
+      await fetch("/api/positions/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: reordered.map((p) => p.id) }) });
+    } catch { showToast("Sorrend mentése sikertelen", "error"); }
+  };
+
+  // ── Variation CRUD ────────────────────────────────────────────────────────────
 
   const handleAddVariation = async (positionId: string) => {
     if (!newVar.name.trim()) { showToast("Adj meg egy nevet", "error"); return; }
     setLoading(true);
+    const payload = { name: newVar.name, multiplierDelta: newVar.useFixed ? 0 : newVar.multiplierDelta, fixedHourlySZD: newVar.useFixed ? newVar.fixedHourlySZD : null };
     try {
-      const res = await fetch(`/api/positions/${positionId}/variations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newVar),
-      });
+      const res = await fetch(`/api/positions/${positionId}/variations`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) { showToast(data.error ?? "Létrehozás sikertelen", "error"); return; }
-      setPositions((prev) => prev.map((p) =>
-        p.id === positionId
-          ? { ...p, variations: [...p.variations, { ...data, multiplierDelta: Number(data.multiplierDelta) }] }
-          : p
-      ));
+      setPositions((prev) => prev.map((p) => p.id === positionId ? { ...p, variations: [...p.variations, { ...data, multiplierDelta: Number(data.multiplierDelta), fixedHourlySZD: data.fixedHourlySZD ?? null }] } : p));
       setAddingVarFor(null);
-      setNewVar({ name: "", multiplierDelta: 0 });
+      setNewVar({ name: "", multiplierDelta: 0, fixedHourlySZD: null, useFixed: false });
       showToast("Változat hozzáadva", "success");
     } catch { showToast("Hálózati hiba", "error"); }
     finally { setLoading(false); }
@@ -144,18 +191,9 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
   const handleToggleVariation = async (positionId: string, v: VariationRow) => {
     setTogglingVar(v.id);
     try {
-      const res = await fetch(`/api/positions/${positionId}/variations/${v.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: !v.active }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error ?? "Hiba", "error"); return; }
-      setPositions((prev) => prev.map((p) =>
-        p.id === positionId
-          ? { ...p, variations: p.variations.map((vv) => vv.id === v.id ? { ...vv, active: !v.active } : vv) }
-          : p
-      ));
+      const res = await fetch(`/api/positions/${positionId}/variations/${v.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !v.active }) });
+      if (!res.ok) { const d = await res.json(); showToast(d.error ?? "Hiba", "error"); return; }
+      setPositions((prev) => prev.map((p) => p.id === positionId ? { ...p, variations: p.variations.map((vv) => vv.id === v.id ? { ...vv, active: !v.active } : vv) } : p));
       showToast(v.active ? "Változat inaktiválva" : "Változat aktiválva", "success");
     } catch { showToast("Hálózati hiba", "error"); }
     finally { setTogglingVar(null); }
@@ -167,9 +205,7 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
     try {
       const res = await fetch(`/api/positions/${positionId}/variations/${varId}`, { method: "DELETE" });
       if (!res.ok) { showToast("Törlés sikertelen", "error"); return; }
-      setPositions((prev) => prev.map((p) =>
-        p.id === positionId ? { ...p, variations: p.variations.filter((v) => v.id !== varId) } : p
-      ));
+      setPositions((prev) => prev.map((p) => p.id === positionId ? { ...p, variations: p.variations.filter((v) => v.id !== varId) } : p));
       showToast("Változat törölve", "success");
     } catch { showToast("Hálózati hiba", "error"); }
     finally { setDeletingVar(null); }
@@ -189,28 +225,38 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 w-6"></th>
+              {canWrite && <th className="w-8 px-2 py-3" title="Húzd át a sorrendjük megváltoztatásához" />}
+              <th className="text-left px-2 py-3 font-medium text-gray-500 w-6" />
               <th className="text-left px-4 py-3 font-medium text-gray-500">Pozíció neve</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-500">Szorzó</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-500">Szorzó / Fix óradíj</th>
               <th className="text-center px-4 py-3 font-medium text-gray-500">SZD jogos.</th>
               <th className="text-right px-4 py-3 font-medium text-gray-500">Dolgozók</th>
               <th className="text-center px-4 py-3 font-medium text-gray-500">Aktív</th>
-              {canWrite && <th className="px-4 py-3 w-24"></th>}
+              {canWrite && <th className="px-4 py-3 w-24" />}
             </tr>
           </thead>
           <tbody>
             {positions.map((pos) => {
               const isExpanded = expanded.has(pos.id);
+              const isDragOver = dragOverId === pos.id && dragId !== pos.id;
               return (
                 <>
-                  {/* ── Position row ── */}
-                  <tr key={pos.id} className={`border-b ${pos.active ? "hover:bg-gray-50" : "bg-gray-50 opacity-70"}`}>
+                  <tr
+                    key={pos.id}
+                    draggable={canWrite}
+                    onDragStart={() => setDragId(pos.id)}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverId(pos.id); }}
+                    onDrop={() => handleDrop(pos.id)}
+                    onDragEnd={() => { setDragId(null); setDragOverId(null); }}
+                    className={`border-b ${isDragOver ? "bg-indigo-50 outline outline-2 -outline-offset-2 outline-indigo-400" : ""} ${pos.active ? "hover:bg-gray-50" : "bg-gray-50 opacity-70"}`}
+                  >
+                    {canWrite && (
+                      <td className="px-2 py-3 text-center cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500">
+                        <GripVertical size={14} />
+                      </td>
+                    )}
                     <td className="px-2 py-3 text-center">
-                      <button
-                        onClick={() => toggleExpand(pos.id)}
-                        className="text-gray-400 hover:text-gray-600 p-0.5 rounded"
-                        title={isExpanded ? "Változatok elrejtése" : "Változatok mutatása"}
-                      >
+                      <button onClick={() => toggleExpand(pos.id)} className="text-gray-400 hover:text-gray-600 p-0.5 rounded">
                         {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       </button>
                     </td>
@@ -222,18 +268,30 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
                         <span className={pos.active ? "" : "line-through text-gray-400"}>{pos.name}</span>
                       )}
                       {pos.variations.length > 0 && (
-                        <span className="ml-2 text-xs text-indigo-500 font-normal">
-                          {pos.variations.filter((v) => v.active).length} változat
-                        </span>
+                        <span className="ml-2 text-xs text-indigo-500 font-normal">{pos.variations.filter((v) => v.active).length} változat</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono">
+                    <td className="px-4 py-3 text-right">
                       {editing === pos.id ? (
-                        <input type="number" step="0.05" value={editValues.multiplier}
-                          onChange={(e) => setEditValues((v) => ({ ...v, multiplier: parseFloat(e.target.value) }))}
-                          className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                        <div className="flex flex-col gap-1.5 items-end">
+                          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                            <input type="checkbox" checked={editValues.useFixed ?? false}
+                              onChange={(e) => setEditValues((v) => ({ ...v, useFixed: e.target.checked }))} className="rounded" />
+                            Fix óradíj
+                          </label>
+                          {editValues.useFixed ? (
+                            <input type="number" step="100" min="0" placeholder="Ft/óra"
+                              value={editValues.fixedHourlySZD ?? ""}
+                              onChange={(e) => setEditValues((v) => ({ ...v, fixedHourlySZD: e.target.value ? parseInt(e.target.value) : null }))}
+                              className="w-28 border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                          ) : (
+                            <input type="number" step="0.05" value={editValues.multiplier}
+                              onChange={(e) => setEditValues((v) => ({ ...v, multiplier: parseFloat(e.target.value) }))}
+                              className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                          )}
+                        </div>
                       ) : (
-                        `${pos.multiplier.toFixed(2)}x`
+                        <RateDisplay multiplier={pos.multiplier} fixedHourlySZD={pos.fixedHourlySZD} />
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -242,11 +300,8 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
                     <td className="px-4 py-3 text-right text-gray-500">{pos.employeeCount}</td>
                     <td className="px-4 py-3 text-center">
                       {canWrite ? (
-                        <button
-                          onClick={() => handleTogglePosition(pos)}
-                          title={pos.active ? "Inaktiválás" : "Aktiválás"}
-                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${pos.active ? "bg-emerald-500" : "bg-gray-300"}`}
-                        >
+                        <button onClick={() => handleTogglePosition(pos)}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${pos.active ? "bg-emerald-500" : "bg-gray-300"}`}>
                           <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${pos.active ? "translate-x-4.5" : "translate-x-0.5"}`} />
                         </button>
                       ) : (
@@ -269,12 +324,12 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
                     )}
                   </tr>
 
-                  {/* ── Variation rows (expanded) ── */}
                   {isExpanded && (
                     <>
                       {pos.variations.map((v) => (
                         <tr key={v.id} className={`border-b bg-indigo-50/40 ${v.active ? "" : "opacity-50"}`}>
-                          <td className="px-2 py-2"></td>
+                          {canWrite && <td className="px-2 py-2" />}
+                          <td className="px-2 py-2" />
                           <td className="px-4 py-2 pl-8 text-indigo-800 text-xs">
                             <div className="flex items-center gap-2">
                               <span className="w-1 h-1 rounded-full bg-indigo-400 flex-shrink-0" />
@@ -282,34 +337,21 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
                             </div>
                           </td>
                           <td className="px-4 py-2 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <DeltaBadge delta={v.multiplierDelta} />
-                              <span className="text-xs font-mono text-gray-700">
-                                = {(pos.multiplier + v.multiplierDelta).toFixed(2)}x
-                              </span>
-                            </div>
+                            <VariationRateDisplay baseMultiplier={pos.multiplier} baseFixed={pos.fixedHourlySZD} delta={v.multiplierDelta} fixedHourlySZD={v.fixedHourlySZD} />
                           </td>
                           <td className="px-4 py-2" colSpan={2} />
                           <td className="px-4 py-2 text-center">
                             {canWrite && (
-                              <button
-                                onClick={() => handleToggleVariation(pos.id, v)}
-                                disabled={togglingVar === v.id}
-                                title={v.active ? "Inaktiválás" : "Aktiválás"}
-                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${v.active ? "bg-emerald-500" : "bg-gray-300"}`}
-                              >
+                              <button onClick={() => handleToggleVariation(pos.id, v)} disabled={togglingVar === v.id}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${v.active ? "bg-emerald-500" : "bg-gray-300"}`}>
                                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${v.active ? "translate-x-4.5" : "translate-x-0.5"}`} />
                               </button>
                             )}
                           </td>
                           {canWrite && (
                             <td className="px-4 py-2 text-right">
-                              <button
-                                onClick={() => handleDeleteVariation(pos.id, v.id)}
-                                disabled={deletingVar === v.id}
-                                className="p-1 text-red-400 hover:text-red-600 disabled:opacity-40"
-                                title="Változat törlése"
-                              >
+                              <button onClick={() => handleDeleteVariation(pos.id, v.id)} disabled={deletingVar === v.id}
+                                className="p-1 text-red-400 hover:text-red-600 disabled:opacity-40">
                                 <X size={13} />
                               </button>
                             </td>
@@ -317,54 +359,49 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
                         </tr>
                       ))}
 
-                      {/* ── Add variation row ── */}
                       {canWrite && (
                         <tr className="border-b bg-indigo-50/20">
-                          <td className="px-2 py-2"></td>
+                          <td className="px-2 py-2" />
+                          <td className="px-2 py-2" />
                           <td className="px-4 py-2 pl-8" colSpan={canWrite ? 5 : 4}>
                             {addingVarFor === pos.id ? (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  placeholder="Változat neve (pl. Diák)"
-                                  value={newVar.name}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <input type="text" placeholder="Változat neve (pl. Diák)" value={newVar.name}
                                   onChange={(e) => setNewVar((v) => ({ ...v, name: e.target.value }))}
-                                  className="border border-gray-300 rounded px-2 py-1 text-xs w-40 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                                  autoFocus
-                                />
-                                <div className="flex items-center gap-1">
-                                  <span className="text-xs text-gray-500">Delta:</span>
-                                  <input
-                                    type="number"
-                                    step="0.05"
-                                    placeholder="0.00"
-                                    value={newVar.multiplierDelta}
-                                    onChange={(e) => setNewVar((v) => ({ ...v, multiplierDelta: parseFloat(e.target.value) || 0 }))}
-                                    className="border border-gray-300 rounded px-2 py-1 text-xs w-20 text-right focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                                  />
-                                  <span className="text-xs text-gray-400">
-                                    → {(pos.multiplier + newVar.multiplierDelta).toFixed(2)}x
-                                  </span>
-                                </div>
-                                <button
-                                  onClick={() => handleAddVariation(pos.id)}
-                                  disabled={loading}
-                                  className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50"
-                                >
+                                  className="border border-gray-300 rounded px-2 py-1 text-xs w-36 focus:outline-none focus:ring-1 focus:ring-indigo-400" autoFocus />
+                                <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+                                  <input type="checkbox" checked={newVar.useFixed}
+                                    onChange={(e) => setNewVar((v) => ({ ...v, useFixed: e.target.checked }))} className="rounded" />
+                                  Fix óradíj
+                                </label>
+                                {newVar.useFixed ? (
+                                  <input type="number" step="100" min="0" placeholder="Ft/óra"
+                                    value={newVar.fixedHourlySZD ?? ""}
+                                    onChange={(e) => setNewVar((v) => ({ ...v, fixedHourlySZD: e.target.value ? parseInt(e.target.value) : null }))}
+                                    className="border border-gray-300 rounded px-2 py-1 text-xs w-24 text-right" />
+                                ) : (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs text-gray-500">Delta:</span>
+                                    <input type="number" step="0.05" placeholder="0.00" value={newVar.multiplierDelta}
+                                      onChange={(e) => setNewVar((v) => ({ ...v, multiplierDelta: parseFloat(e.target.value) || 0 }))}
+                                      className="border border-gray-300 rounded px-2 py-1 text-xs w-20 text-right" />
+                                    {pos.fixedHourlySZD == null && (
+                                      <span className="text-xs text-gray-400">→ {(pos.multiplier + newVar.multiplierDelta).toFixed(2)}x</span>
+                                    )}
+                                  </div>
+                                )}
+                                <button onClick={() => handleAddVariation(pos.id)} disabled={loading}
+                                  className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50">
                                   Hozzáadás
                                 </button>
-                                <button
-                                  onClick={() => { setAddingVarFor(null); setNewVar({ name: "", multiplierDelta: 0 }); }}
-                                  className="px-2 py-1 text-gray-500 hover:text-gray-700 text-xs"
-                                >
+                                <button onClick={() => { setAddingVarFor(null); setNewVar({ name: "", multiplierDelta: 0, fixedHourlySZD: null, useFixed: false }); }}
+                                  className="px-2 py-1 text-gray-500 hover:text-gray-700 text-xs">
                                   Mégse
                                 </button>
                               </div>
                             ) : (
-                              <button
-                                onClick={() => { setAddingVarFor(pos.id); setNewVar({ name: "", multiplierDelta: 0 }); }}
-                                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                              >
+                              <button onClick={() => { setAddingVarFor(pos.id); setNewVar({ name: "", multiplierDelta: 0, fixedHourlySZD: null, useFixed: false }); }}
+                                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium">
                                 <Plus size={12} /> Változat hozzáadása
                               </button>
                             )}
@@ -380,7 +417,6 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
         </table>
       </div>
 
-      {/* ── New position modal ── */}
       {adding && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
@@ -392,10 +428,26 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Szorzó</label>
-                <input type="number" step="0.05" value={newPos.multiplier}
-                  onChange={(e) => setNewPos((v) => ({ ...v, multiplier: parseFloat(e.target.value) }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input type="checkbox" checked={newPos.useFixed}
+                    onChange={(e) => setNewPos((v) => ({ ...v, useFixed: e.target.checked }))} className="rounded" />
+                  <span className="text-sm text-gray-700">Fix óradíj (nem szorzó alapú)</span>
+                </label>
+                {newPos.useFixed ? (
+                  <>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fix SZD óradíj (Ft)</label>
+                    <input type="number" step="100" min="0" value={newPos.fixedHourlySZD ?? ""}
+                      onChange={(e) => setNewPos((v) => ({ ...v, fixedHourlySZD: e.target.value ? parseInt(e.target.value) : null }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Szorzó</label>
+                    <input type="number" step="0.05" value={newPos.multiplier}
+                      onChange={(e) => setNewPos((v) => ({ ...v, multiplier: parseFloat(e.target.value) }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+                  </>
+                )}
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={newPos.eligibleForServiceCharge}
@@ -405,7 +457,7 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
             </div>
             <div className="mt-5 flex justify-end gap-3">
               <button onClick={() => setAdding(false)} className="px-3 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">Mégse</button>
-              <button onClick={handleCreate} disabled={loading || !newPos.name}
+              <button onClick={handleCreate} disabled={loading || !newPos.name || (newPos.useFixed && newPos.fixedHourlySZD == null)}
                 className="px-3 py-2 text-sm text-white bg-gray-900 rounded-md disabled:opacity-50 hover:bg-gray-700">
                 Létrehozás
               </button>

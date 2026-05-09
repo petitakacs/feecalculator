@@ -8,7 +8,7 @@ export default async function PositionsPage() {
   if (!session) return null;
 
   const positions = await prisma.position.findMany({
-    orderBy: { name: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     include: {
       _count: { select: { employees: true } },
       variations: { orderBy: { name: "asc" } },
@@ -25,10 +25,12 @@ export default async function PositionsPage() {
           id: p.id,
           name: p.name,
           multiplier: Number(p.multiplier),
+          fixedHourlySZD: p.fixedHourlySZD ?? null,
           eligibleForServiceCharge: p.eligibleForServiceCharge,
           defaultOvertimeRule: p.defaultOvertimeRule ?? undefined,
           minHourlyServiceCharge: p.minHourlyServiceCharge ?? undefined,
           maxHourlyServiceCharge: p.maxHourlyServiceCharge ?? undefined,
+          sortOrder: p.sortOrder,
           active: p.active,
           createdAt: p.createdAt.toISOString(),
           updatedAt: p.updatedAt.toISOString(),
@@ -37,6 +39,7 @@ export default async function PositionsPage() {
             id: v.id,
             name: v.name,
             multiplierDelta: Number(v.multiplierDelta),
+            fixedHourlySZD: v.fixedHourlySZD ?? null,
             active: v.active,
           })),
         }))}

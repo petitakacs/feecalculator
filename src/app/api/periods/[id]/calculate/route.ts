@@ -75,7 +75,12 @@ export async function POST(
   const allEntries: PositionEntry[] = [];
 
   for (const entry of period.entries) {
-    // SeasonPositionRule overrides have highest priority; otherwise base + variation delta
+    // Resolve fixed hourly rate: variation > position (both optional)
+    const variationFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
+    const positionFixed = entry.position.fixedHourlySZD ?? null;
+    const resolvedFixed = variationFixed ?? positionFixed;
+
+    // Multiplier path (used only when no fixed rate)
     const baseMultiplier = multiplierOverrideMap.get(entry.positionId) ??
       Number(entry.position.multiplier);
     const variationDelta = entry.employee?.variation?.multiplierDelta != null
@@ -88,6 +93,7 @@ export async function POST(
       employeeId: entry.employeeId,
       positionId: entry.positionId,
       multiplier: positionMultiplier,
+      fixedHourlySZD: resolvedFixed,
       workedHours: Number(entry.workedHours),
       bonus: entry.bonus,
       overtimePayment: entry.overtimePayment,

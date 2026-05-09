@@ -53,10 +53,12 @@ export interface Position {
   id: string;
   name: string;
   multiplier: number;
+  fixedHourlySZD?: number | null;
   eligibleForServiceCharge: boolean;
   defaultOvertimeRule?: string;
   minHourlyServiceCharge?: number;
   maxHourlyServiceCharge?: number;
+  sortOrder?: number;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -67,12 +69,14 @@ export interface PositionVariation {
   positionId: string;
   name: string;
   multiplierDelta: number;
+  fixedHourlySZD?: number | null;
   active: boolean;
 }
 
 export interface Employee {
   id: string;
   name: string;
+  sortOrder?: number;
   active: boolean;
   positionId: string;
   position?: Position;

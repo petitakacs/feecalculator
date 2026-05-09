@@ -52,15 +52,25 @@ export async function POST(
 
   await Promise.all(
     period.entries.map(async (entry) => {
-      const baseMultiplier =
-        multiplierOverrideMap.get(entry.positionId) ?? Number(entry.position.multiplier);
-      const variationDelta =
-        entry.employee?.variation?.multiplierDelta != null
-          ? Number(entry.employee.variation.multiplierDelta)
-          : 0;
-      const effectiveMultiplier = baseMultiplier + variationDelta;
+      // Fixed-rate entries are unaffected by the reference rate
+      const variationFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
+      const positionFixed = entry.position.fixedHourlySZD ?? null;
+      const resolvedFixed = variationFixed ?? positionFixed;
 
-      const targetNetHourlyServiceCharge = Math.round(refRate * effectiveMultiplier);
+      let targetNetHourlyServiceCharge: number;
+      if (resolvedFixed != null) {
+        targetNetHourlyServiceCharge = resolvedFixed;
+      } else {
+        const baseMultiplier =
+          multiplierOverrideMap.get(entry.positionId) ?? Number(entry.position.multiplier);
+        const variationDelta =
+          entry.employee?.variation?.multiplierDelta != null
+            ? Number(entry.employee.variation.multiplierDelta)
+            : 0;
+        const effectiveMultiplier = baseMultiplier + variationDelta;
+        targetNetHourlyServiceCharge = Math.round(refRate * effectiveMultiplier);
+      }
+
       const targetServiceChargeAmount = Math.round(
         targetNetHourlyServiceCharge * Number(entry.workedHours)
       );
@@ -71,10 +81,9 @@ export async function POST(
         data: {
           targetNetHourlyServiceCharge,
           targetServiceChargeAmount,
-          // Also update the "original calculated" value so the override indicator resets
           calculatedTargetNetHourlyServiceCharge: targetNetHourlyServiceCharge,
-          // Clear any per-entry manual override since we're applying a new base rate
-          overrideFlag: false,
+          // Only clear override flag for multiplier-based entries
+          ...(resolvedFixed == null ? { overrideFlag: false } : {}),
         },
       });
     })

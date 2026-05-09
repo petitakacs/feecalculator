@@ -51,10 +51,12 @@ export const UpdateEmployeeSchema = CreateEmployeeSchema.partial();
 export const CreatePositionSchema = z.object({
   name: z.string().min(1, "Name is required"),
   multiplier: z.number().min(0),
+  fixedHourlySZD: z.number().int().min(0).optional().nullable(),
   eligibleForServiceCharge: z.boolean().default(true),
   defaultOvertimeRule: z.string().optional().nullable(),
   minHourlyServiceCharge: z.number().int().optional().nullable(),
   maxHourlyServiceCharge: z.number().int().optional().nullable(),
+  sortOrder: z.number().int().default(0),
   active: z.boolean().default(true),
 });
 

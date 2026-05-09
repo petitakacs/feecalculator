@@ -666,7 +666,14 @@ export function AllocationTable({
               {entry.employee?.name ?? entry.employeeId}
             </span>
             {entry.employee?.variation && (
-              <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs" title={`Változat szorzó delta: ${entry.employee.variation.multiplierDelta >= 0 ? "+" : ""}${entry.employee.variation.multiplierDelta}x`}>
+              <span
+                className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs"
+                title={
+                  entry.employee.variation.fixedHourlySZD != null
+                    ? `Fix óradíj: ${formatCurrency(entry.employee.variation.fixedHourlySZD)}/óra`
+                    : `Változat szorzó delta: ${entry.employee.variation.multiplierDelta >= 0 ? "+" : ""}${entry.employee.variation.multiplierDelta}x`
+                }
+              >
                 {entry.employee.variation.name}
               </span>
             )}
@@ -687,6 +694,19 @@ export function AllocationTable({
           <td className="px-3 py-2 text-gray-500 border-r border-gray-100 text-xs">
             <div>{entry.position?.name ?? entry.positionId}</div>
             {(() => {
+              const varFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
+              const posFixed = entry.position?.fixedHourlySZD ?? null;
+              const resolvedFixed = varFixed ?? posFixed;
+              if (resolvedFixed != null) {
+                return (
+                  <div className="mt-0.5">
+                    <span className="px-1 py-0.5 rounded text-[10px] font-mono bg-amber-50 text-amber-700 border border-amber-200"
+                      title={varFixed != null ? "Változat fix óradíj" : "Pozíció fix óradíj"}>
+                      Fix: {formatCurrency(resolvedFixed)}/óra
+                    </span>
+                  </div>
+                );
+              }
               const base = Number(entry.position?.multiplier ?? 1);
               const delta = entry.employee?.variation?.multiplierDelta != null
                 ? Number(entry.employee.variation.multiplierDelta) : 0;
@@ -741,6 +761,18 @@ export function AllocationTable({
               )}
             </div>
           ) : entry.targetNetHourlyServiceCharge != null ? (() => {
+            const varFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
+            const posFixed = entry.position?.fixedHourlySZD ?? null;
+            const resolvedFixed = varFixed ?? posFixed;
+            if (resolvedFixed != null) {
+              return (
+                <Tooltip lines={[
+                  <span key="f">Fix SZD óradíj{varFixed != null ? ` (változat)` : ""}: <b>{formatCurrency(resolvedFixed)}/óra</b></span>,
+                ]}>
+                  {formatCurrency(entry.targetNetHourlyServiceCharge)}
+                </Tooltip>
+              );
+            }
             const baseMultiplier = Number(entry.position?.multiplier ?? 1);
             const variationDelta = entry.employee?.variation?.multiplierDelta != null
               ? Number(entry.employee.variation.multiplierDelta) : 0;
@@ -770,6 +802,20 @@ export function AllocationTable({
           {entry.targetServiceChargeAmount != null ? (() => {
             const hourlyRate = entry.targetNetHourlyServiceCharge ?? 0;
             const hours = Number(entry.workedHours);
+            const varFixed2 = entry.employee?.variation?.fixedHourlySZD ?? null;
+            const posFixed2 = entry.position?.fixedHourlySZD ?? null;
+            const resolvedFixed2 = varFixed2 ?? posFixed2;
+            if (resolvedFixed2 != null) {
+              return (
+                <Tooltip lines={[
+                  <span key="f">Fix SZD óradíj: <b>{formatCurrency(resolvedFixed2)}/óra</b></span>,
+                  <span key="eq" className="border-t border-gray-600 block mt-1 pt-1">{hours} óra × {formatCurrency(resolvedFixed2)}/óra</span>,
+                  <span key="res">= <b>{formatCurrency(entry.targetServiceChargeAmount)}</b></span>,
+                ]}>
+                  {formatCurrency(entry.targetServiceChargeAmount)}
+                </Tooltip>
+              );
+            }
             const baseMultiplier = Number(entry.position?.multiplier ?? 1);
             const variationDelta = entry.employee?.variation?.multiplierDelta != null
               ? Number(entry.employee.variation.multiplierDelta) : 0;

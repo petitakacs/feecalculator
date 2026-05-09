@@ -8,6 +8,7 @@ import { z } from "zod";
 const UpdateVariationSchema = z.object({
   name: z.string().min(1).optional(),
   multiplierDelta: z.number().optional(),
+  fixedHourlySZD: z.number().int().min(0).optional().nullable(),
   active: z.boolean().optional(),
 });
 

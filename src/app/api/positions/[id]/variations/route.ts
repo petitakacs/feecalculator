@@ -8,6 +8,7 @@ import { z } from "zod";
 const CreateVariationSchema = z.object({
   name: z.string().min(1, "Név kötelező"),
   multiplierDelta: z.number(),
+  fixedHourlySZD: z.number().int().min(0).optional().nullable(),
 });
 
 export async function POST(
@@ -38,7 +39,12 @@ export async function POST(
   }
 
   const variation = await prisma.positionVariation.create({
-    data: { positionId: id, name: parsed.data.name, multiplierDelta: parsed.data.multiplierDelta },
+    data: {
+      positionId: id,
+      name: parsed.data.name,
+      multiplierDelta: parsed.data.multiplierDelta,
+      fixedHourlySZD: parsed.data.fixedHourlySZD ?? null,
+    },
   });
 
   return NextResponse.json(variation, { status: 201 });

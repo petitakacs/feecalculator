@@ -72,10 +72,12 @@ model Position {
   id                       String                 @id @default(cuid())
   name                     String                 @unique
   multiplier               Decimal
+  fixedHourlySZD           Int?
   eligibleForServiceCharge Boolean                @default(true)
   defaultOvertimeRule      String?
   minHourlyServiceCharge   Int?
   maxHourlyServiceCharge   Int?
+  sortOrder                Int                    @default(0)
   active                   Boolean                @default(true)
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
@@ -91,6 +93,7 @@ model PositionVariation {
   position        Position @relation(fields: [positionId], references: [id])
   name            String   // e.g. "Diák", "Új belépő"
   multiplierDelta Decimal  // additive delta from base, e.g. -0.10
+  fixedHourlySZD  Int?
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -106,6 +109,7 @@ model PositionVariation {
 model Employee {
   id                       String                 @id @default(cuid())
   name                     String
+  sortOrder                Int                    @default(0)
   active                   Boolean                @default(true)
   positionId               String
   position                 Position               @relation(fields: [positionId], references: [id])

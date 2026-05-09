@@ -15,7 +15,7 @@ export async function GET() {
 
   const employees = await prisma.employee.findMany({
     include: { position: true },
-    orderBy: { name: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
 
   return NextResponse.json(employees);
