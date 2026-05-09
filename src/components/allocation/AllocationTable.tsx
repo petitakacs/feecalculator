@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, type ReactNode } from "react";
 import {
   MonthlyPeriod,
   MonthlyEmployeeEntry,
@@ -102,6 +102,8 @@ export function AllocationTable({
   const [addingOne, setAddingOne] = useState(false);
 
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
+  const [lastRefRate, setLastRefRate] = useState<number | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
 
   // Template state
   const TEMPLATE_KEY = `sc_template_${period.locationId ?? "global"}`;
@@ -233,6 +235,7 @@ export function AllocationTable({
         return;
       }
       const data = await res.json();
+      setLastRefRate(data.waiterReferenceHourlyRateCents);
       showToast(`Számítás kész. Ref díj: ${formatCurrency(data.waiterReferenceHourlyRateCents)}/óra`, "success");
       await refreshEntries();
     } catch {
@@ -453,6 +456,21 @@ export function AllocationTable({
     }
   };
 
+  const handleSaveAll = async () => {
+    const dirty = entries.filter((e) => dirtyRows.has(e.id));
+    if (dirty.length === 0) {
+      showToast("Nincs mentendő módosítás", "info");
+      return;
+    }
+    setSavingAll(true);
+    try {
+      await Promise.all(dirty.map(handleBlurSave));
+      showToast(`${dirty.length} sor sikeresen mentve`, "success");
+    } finally {
+      setSavingAll(false);
+    }
+  };
+
   const MONEY_FIELDS: (keyof RowValues)[] = [
     "netWaiterSales", "bonus", "overtimePayment", "manualCorrection", "finalApprovedAmount",
   ];
@@ -495,6 +513,17 @@ export function AllocationTable({
     if (raw === "") return <span className="text-gray-300">-</span>;
     return <span>{isMoney ? formatInteger(raw) : raw}</span>;
   };
+
+  // Simple CSS tooltip used for target value breakdowns
+  const Tooltip = ({ children, lines }: { children: ReactNode; lines: ReactNode[] }) => (
+    <div className="relative group/tip inline-flex items-center justify-end">
+      {children}
+      <div className="pointer-events-none absolute bottom-full right-0 mb-2 hidden group-hover/tip:block z-[200] bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+        {lines.map((line, i) => <div key={i}>{line}</div>)}
+        <div className="absolute top-full right-3 border-4 border-transparent border-t-gray-900" />
+      </div>
+    </div>
+  );
 
   // Grouping
   type EntryGroup = { positionName: string; entries: MonthlyEmployeeEntry[] };
@@ -575,10 +604,42 @@ export function AllocationTable({
 
         {/* Célértékek */}
         <td className="px-3 py-1.5 text-right text-green-700 text-xs">
-          {entry.targetNetHourlyServiceCharge != null ? formatCurrency(entry.targetNetHourlyServiceCharge) : <span className="text-gray-300">-</span>}
+          {entry.targetNetHourlyServiceCharge != null ? (() => {
+            const multiplier = entry.position?.multiplier ?? 1;
+            const refRate = multiplier !== 0
+              ? Math.round(entry.targetNetHourlyServiceCharge / multiplier)
+              : (lastRefRate ?? 0);
+            return (
+              <Tooltip lines={[
+                <span key="r">Ref. óradíj: <b>{formatCurrency(refRate)}/óra</b></span>,
+                <span key="m">Szorzó: <b>{multiplier}×</b></span>,
+                <span key="eq" className="border-t border-gray-600 block mt-1 pt-1">= {formatCurrency(entry.targetNetHourlyServiceCharge)}/óra</span>,
+              ]}>
+                {formatCurrency(entry.targetNetHourlyServiceCharge)}
+              </Tooltip>
+            );
+          })() : <span className="text-gray-300">-</span>}
         </td>
         <td className="px-3 py-1.5 text-right font-medium text-green-700 border-r border-green-100 text-xs">
-          {entry.targetServiceChargeAmount != null ? formatCurrency(entry.targetServiceChargeAmount) : <span className="text-gray-300">-</span>}
+          {entry.targetServiceChargeAmount != null ? (() => {
+            const hourlyRate = entry.targetNetHourlyServiceCharge ?? 0;
+            const hours = Number(entry.workedHours);
+            const multiplier = entry.position?.multiplier ?? 1;
+            const refRate = multiplier !== 0
+              ? Math.round(hourlyRate / multiplier)
+              : (lastRefRate ?? 0);
+            return (
+              <Tooltip lines={[
+                <span key="r">Ref. óradíj: <b>{formatCurrency(refRate)}/óra</b></span>,
+                <span key="m">Szorzó: <b>{multiplier}×</b></span>,
+                <span key="h">Célóradíj: <b>{formatCurrency(hourlyRate)}/óra</b></span>,
+                <span key="eq" className="border-t border-gray-600 block mt-1 pt-1">{hours} óra × {formatCurrency(hourlyRate)}/óra</span>,
+                <span key="res">= <b>{formatCurrency(entry.targetServiceChargeAmount)}</b></span>,
+              ]}>
+                {formatCurrency(entry.targetServiceChargeAmount)}
+              </Tooltip>
+            );
+          })() : <span className="text-gray-300">-</span>}
         </td>
 
         {/* Kiegészítők */}
@@ -788,6 +849,14 @@ export function AllocationTable({
             </div>
 
             <ImportModal periodId={period.id} />
+            <button
+              onClick={handleSaveAll}
+              disabled={savingAll || dirtyRows.size === 0}
+              className="px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-md hover:bg-emerald-700 disabled:opacity-40 font-medium"
+              title="Összes módosítás mentése jóváhagyásra küldés nélkül"
+            >
+              {savingAll ? "Mentés..." : dirtyRows.size > 0 ? `Mentés (${dirtyRows.size})` : "Mentés"}
+            </button>
             <button
               onClick={handleCalculate}
               disabled={calculating}
