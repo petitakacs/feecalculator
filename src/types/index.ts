@@ -23,6 +23,18 @@ export type ApprovalAction =
   | "REOPENED"
   | "CLOSED";
 
+export type ExtraBonusType = "FIXED_AMOUNT" | "HOURLY_RATE";
+
+export interface Location {
+  id: string;
+  name: string;
+  address?: string;
+  serviceChargePercent?: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -57,7 +69,8 @@ export interface Employee {
   eligibleForServiceCharge: boolean;
   startDate: string;
   endDate?: string;
-  location?: string;
+  locationId?: string;
+  location?: Location;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -92,6 +105,8 @@ export interface MonthlyPeriod {
   id: string;
   month: number;
   year: number;
+  locationId?: string;
+  location?: Location;
   seasonId: string;
   season?: Season;
   openingBalance: number;
@@ -117,6 +132,10 @@ export interface MonthlyEmployeeEntry {
   employee?: Employee;
   positionId: string;
   position?: Position;
+  workingLocationId?: string;
+  workingLocation?: Location;
+  isLoanEntry: boolean;
+  entryLabel?: string;
   workedHours: number;
   overtimeHours: number;
   netWaiterSales?: number;
@@ -132,6 +151,31 @@ export interface MonthlyEmployeeEntry {
   notes?: string;
   overrideFlag: boolean;
   overrideReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExtraTaskType {
+  id: string;
+  name: string;
+  description?: string;
+  bonusType: ExtraBonusType;
+  bonusAmount: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MonthlyExtraTask {
+  id: string;
+  periodId: string;
+  employeeId: string;
+  employee?: Employee;
+  extraTaskTypeId: string;
+  extraTaskType?: ExtraTaskType;
+  hours?: number;
+  amount: number;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }
