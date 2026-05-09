@@ -23,7 +23,7 @@ export function SeasonForm({ season, userRole }: SeasonFormProps) {
     endDate: season?.endDate?.split("T")[0] ?? "",
     referenceMode: season?.referenceMode ?? "SALES_BASED",
     manualWaiterTargetHourly: season?.manualWaiterTargetHourly
-      ? season.manualWaiterTargetHourly / 100
+      ? season.manualWaiterTargetHourly
       : 0,
     minAllowedVariance: season?.minAllowedVariance
       ? season.minAllowedVariance * 100
@@ -51,7 +51,7 @@ export function SeasonForm({ season, userRole }: SeasonFormProps) {
     };
 
     if (form.referenceMode === "MANUAL_TARGET") {
-      payload.manualWaiterTargetHourly = Math.round(form.manualWaiterTargetHourly * 100);
+      payload.manualWaiterTargetHourly = Math.round(form.manualWaiterTargetHourly);
     }
     if (form.referenceMode === "SALES_BASED_WITH_LIMITS") {
       payload.minAllowedVariance = form.minAllowedVariance / 100;
@@ -141,7 +141,7 @@ export function SeasonForm({ season, userRole }: SeasonFormProps) {
 
         {form.referenceMode === "MANUAL_TARGET" && (
           <div>
-            <label className={labelClass}>Manual Waiter Target Hourly Rate (€/hr)</label>
+            <label className={labelClass}>Manual Waiter Target Hourly Rate (Ft/hr)</label>
             <input
               type="number"
               step="0.01"

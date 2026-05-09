@@ -28,8 +28,8 @@ interface SimulationResult {
 export function SimulationForm() {
   const [form, setForm] = useState<SimulationState>({
     openingBalance: 0,
-    collectedServiceCharge: 500000, // €5000
-    waiterNetSales: 10000000, // €100,000
+    collectedServiceCharge: 500000,
+    waiterNetSales: 10000000,
     waiterWorkedHours: 160,
     mode: "SALES_BASED",
     manualWaiterTargetHourly: 200,
@@ -81,20 +81,20 @@ export function SimulationForm() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Opening Balance (€)</label>
+            <label className={labelClass}>Opening Balance (Ft)</label>
             <input
               type="number"
-              value={form.openingBalance / 100}
-              onChange={(e) => set("openingBalance", Math.round(parseFloat(e.target.value || "0") * 100))}
+              value={form.openingBalance}
+              onChange={(e) => set("openingBalance", Math.round(parseFloat(e.target.value || "0")))}
               className={inputClass}
             />
           </div>
           <div>
-            <label className={labelClass}>Collected Service Charge (€)</label>
+            <label className={labelClass}>Collected Service Charge (Ft)</label>
             <input
               type="number"
-              value={form.collectedServiceCharge / 100}
-              onChange={(e) => set("collectedServiceCharge", Math.round(parseFloat(e.target.value || "0") * 100))}
+              value={form.collectedServiceCharge}
+              onChange={(e) => set("collectedServiceCharge", Math.round(parseFloat(e.target.value || "0")))}
               className={inputClass}
             />
           </div>
@@ -102,11 +102,11 @@ export function SimulationForm() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Waiter Net Sales (€)</label>
+            <label className={labelClass}>Waiter Net Sales (Ft)</label>
             <input
               type="number"
-              value={form.waiterNetSales / 100}
-              onChange={(e) => set("waiterNetSales", Math.round(parseFloat(e.target.value || "0") * 100))}
+              value={form.waiterNetSales}
+              onChange={(e) => set("waiterNetSales", Math.round(parseFloat(e.target.value || "0")))}
               className={inputClass}
             />
           </div>
@@ -136,11 +136,11 @@ export function SimulationForm() {
 
         {form.mode === "MANUAL_TARGET" && (
           <div>
-            <label className={labelClass}>Manual Waiter Target Hourly Rate (€/hr)</label>
+            <label className={labelClass}>Manual Waiter Target Hourly Rate (Ft/hr)</label>
             <input
               type="number"
-              value={form.manualWaiterTargetHourly / 100}
-              onChange={(e) => set("manualWaiterTargetHourly", Math.round(parseFloat(e.target.value || "0") * 100))}
+              value={form.manualWaiterTargetHourly}
+              onChange={(e) => set("manualWaiterTargetHourly", Math.round(parseFloat(e.target.value || "0")))}
               className={inputClass}
             />
           </div>
@@ -149,20 +149,20 @@ export function SimulationForm() {
         {form.mode === "SALES_BASED_WITH_LIMITS" && (
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={labelClass}>Min Hourly Rate (€/hr)</label>
+              <label className={labelClass}>Min Hourly Rate (Ft/hr)</label>
               <input
                 type="number"
-                value={form.minHourlyCents / 100}
-                onChange={(e) => set("minHourlyCents", Math.round(parseFloat(e.target.value || "0") * 100))}
+                value={form.minHourlyCents}
+                onChange={(e) => set("minHourlyCents", Math.round(parseFloat(e.target.value || "0")))}
                 className={inputClass}
               />
             </div>
             <div>
-              <label className={labelClass}>Max Hourly Rate (€/hr)</label>
+              <label className={labelClass}>Max Hourly Rate (Ft/hr)</label>
               <input
                 type="number"
-                value={form.maxHourlyCents / 100}
-                onChange={(e) => set("maxHourlyCents", Math.round(parseFloat(e.target.value || "0") * 100))}
+                value={form.maxHourlyCents}
+                onChange={(e) => set("maxHourlyCents", Math.round(parseFloat(e.target.value || "0")))}
                 className={inputClass}
               />
             </div>

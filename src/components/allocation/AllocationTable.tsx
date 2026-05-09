@@ -47,7 +47,7 @@ export function AllocationTable({
       }
       const data = await res.json();
       showToast(
-        `Calculation complete. Waiter reference rate: €${(data.waiterReferenceHourlyRateCents / 100).toFixed(2)}/hr`,
+        `Calculation complete. Waiter reference rate: ${formatCurrency(data.waiterReferenceHourlyRateCents)}/hr`,
         "success"
       );
       // Refresh entries
@@ -113,11 +113,11 @@ export function AllocationTable({
     setEditValues({
       workedHours: String(entry.workedHours),
       overtimeHours: String(entry.overtimeHours),
-      netWaiterSales: entry.netWaiterSales != null ? String(entry.netWaiterSales / 100) : "",
-      bonus: String(entry.bonus / 100),
-      overtimePayment: String(entry.overtimePayment / 100),
-      manualCorrection: String(entry.manualCorrection / 100),
-      finalApprovedAmount: entry.finalApprovedAmount != null ? String(entry.finalApprovedAmount / 100) : "",
+      netWaiterSales: entry.netWaiterSales != null ? String(entry.netWaiterSales) : "",
+      bonus: String(entry.bonus),
+      overtimePayment: String(entry.overtimePayment),
+      manualCorrection: String(entry.manualCorrection),
+      finalApprovedAmount: entry.finalApprovedAmount != null ? String(entry.finalApprovedAmount) : "",
       notes: entry.notes ?? "",
     });
   };
@@ -126,23 +126,23 @@ export function AllocationTable({
     const updateData: Record<string, unknown> = {
       workedHours: parseFloat(editValues.workedHours) || 0,
       overtimeHours: parseFloat(editValues.overtimeHours) || 0,
-      bonus: Math.round((parseFloat(editValues.bonus) || 0) * 100),
-      overtimePayment: Math.round((parseFloat(editValues.overtimePayment) || 0) * 100),
-      manualCorrection: Math.round((parseFloat(editValues.manualCorrection) || 0) * 100),
+      bonus: Math.round(parseFloat(editValues.bonus) || 0),
+      overtimePayment: Math.round(parseFloat(editValues.overtimePayment) || 0),
+      manualCorrection: Math.round(parseFloat(editValues.manualCorrection) || 0),
       notes: editValues.notes || null,
     };
 
     if (editValues.netWaiterSales !== "") {
-      updateData.netWaiterSales = Math.round((parseFloat(editValues.netWaiterSales) || 0) * 100);
+      updateData.netWaiterSales = Math.round(parseFloat(editValues.netWaiterSales) || 0);
     }
 
     if (editValues.finalApprovedAmount !== "") {
-      updateData.finalApprovedAmount = Math.round((parseFloat(editValues.finalApprovedAmount) || 0) * 100);
+      updateData.finalApprovedAmount = Math.round(parseFloat(editValues.finalApprovedAmount) || 0);
       const targetAmount =
         (entry.targetServiceChargeAmount ?? 0) +
-        Math.round((parseFloat(editValues.bonus) || 0) * 100) +
-        Math.round((parseFloat(editValues.overtimePayment) || 0) * 100) +
-        Math.round((parseFloat(editValues.manualCorrection) || 0) * 100);
+        Math.round(parseFloat(editValues.bonus) || 0) +
+        Math.round(parseFloat(editValues.overtimePayment) || 0) +
+        Math.round(parseFloat(editValues.manualCorrection) || 0);
       if ((updateData.finalApprovedAmount as number) !== targetAmount) {
         updateData.overrideFlag = true;
       }

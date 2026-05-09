@@ -22,7 +22,7 @@ export function EmployeeForm({ employee, positions, userRole }: EmployeeFormProp
     name: employee?.name ?? "",
     positionId: employee?.positionId ?? positions[0]?.id ?? "",
     baseSalaryType: employee?.baseSalaryType ?? "MONTHLY" as const,
-    baseSalaryAmount: (employee?.baseSalaryAmount ?? 0) / 100,
+    baseSalaryAmount: (employee?.baseSalaryAmount ?? 0),
     eligibleForServiceCharge: employee?.eligibleForServiceCharge ?? true,
     startDate: employee?.startDate?.split("T")[0] ?? new Date().toISOString().split("T")[0],
     endDate: employee?.endDate?.split("T")[0] ?? "",
@@ -41,7 +41,7 @@ export function EmployeeForm({ employee, positions, userRole }: EmployeeFormProp
 
     const payload = {
       ...form,
-      baseSalaryAmount: Math.round(form.baseSalaryAmount * 100),
+      baseSalaryAmount: Math.round(form.baseSalaryAmount),
       endDate: form.endDate || null,
       location: form.location || null,
       notes: form.notes || null,
@@ -124,7 +124,7 @@ export function EmployeeForm({ employee, positions, userRole }: EmployeeFormProp
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>
-              Base Salary (€/{form.baseSalaryType === "HOURLY" ? "hr" : "month"}) *
+              Base Salary (Ft/{form.baseSalaryType === "HOURLY" ? "hr" : "month"}) *
             </label>
             <input
               required

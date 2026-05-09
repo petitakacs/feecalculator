@@ -99,12 +99,12 @@ export function processImportRows(
 
     const hours = parseFloat(String(hoursRaw)) || 0;
     const otHours = parseFloat(String(otHoursRaw)) || 0;
-    const bonus = Math.round(parseFloat(String(bonusRaw)) * 100) || 0;
-    const otPayment = Math.round(parseFloat(String(otPaymentRaw)) * 100) || 0;
-    const correction = Math.round(parseFloat(String(correctionRaw)) * 100) || 0;
+    const bonus = Math.round(parseFloat(String(bonusRaw))) || 0;
+    const otPayment = Math.round(parseFloat(String(otPaymentRaw))) || 0;
+    const correction = Math.round(parseFloat(String(correctionRaw))) || 0;
     const waiterSales =
       waiterSalesRaw !== undefined && waiterSalesRaw !== ""
-        ? Math.round(parseFloat(String(waiterSalesRaw)) * 100)
+        ? Math.round(parseFloat(String(waiterSalesRaw)))
         : undefined;
 
     if (hours < 0) {

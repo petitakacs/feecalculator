@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { BalanceSummaryCard } from "@/components/dashboard/BalanceSummaryCard";
 import { WarningsPanel } from "@/components/dashboard/WarningsPanel";
-import { formatPeriod } from "@/lib/format";
+import { formatPeriod, formatCurrency } from "@/lib/format";
 import Link from "next/link";
 
 export default async function DashboardPage() {
@@ -26,11 +26,11 @@ export default async function DashboardPage() {
 
   if (
     latestPeriod &&
-    latestPeriod.closingBalance < -50000 // -500 EUR threshold
+    latestPeriod.closingBalance < -50000 // -50000 Ft threshold
   ) {
     warnings.push({
       type: "negative_balance" as const,
-      message: `Closing balance is negative: ${(latestPeriod.closingBalance / 100).toFixed(2)} EUR`,
+      message: `Closing balance is negative: ${formatCurrency(latestPeriod.closingBalance)}`,
       severity: "error" as const,
     });
   }
@@ -137,10 +137,10 @@ export default async function DashboardPage() {
                       </Link>
                     </td>
                     <td className="text-right py-2">
-                      €{(period.collectedServiceCharge / 100).toFixed(2)}
+                      {formatCurrency(period.collectedServiceCharge)}
                     </td>
                     <td className="text-right py-2">
-                      €{(period.approvedDistributionTotal / 100).toFixed(2)}
+                      {formatCurrency(period.approvedDistributionTotal)}
                     </td>
                     <td
                       className={`text-right py-2 font-medium ${
@@ -149,7 +149,7 @@ export default async function DashboardPage() {
                           : "text-green-600"
                       }`}
                     >
-                      €{(period.closingBalance / 100).toFixed(2)}
+                      {formatCurrency(period.closingBalance)}
                     </td>
                     <td className="py-2">
                       <span
