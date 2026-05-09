@@ -195,6 +195,7 @@ describe("calculatePeriod", () => {
 
   const allEntries: PositionEntry[] = [
     {
+      entryId: "entry1",
       employeeId: "emp1",
       positionId: "pos1",
       multiplier: 1.0,
@@ -204,6 +205,7 @@ describe("calculatePeriod", () => {
       manualCorrection: 0,
     },
     {
+      entryId: "entry2",
       employeeId: "emp2",
       positionId: "pos2",
       multiplier: 0.9,

@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { formatPeriod, formatCurrency } from "@/lib/format";
+import { formatPeriod } from "@/lib/format";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { AllocationTable } from "@/components/allocation/AllocationTable";
 
@@ -16,33 +16,74 @@ export default async function AllocationPage({
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
-  const period = await prisma.monthlyPeriod.findUnique({
-    where: { id },
-    include: {
-      season: true,
-      entries: {
-        include: {
-          employee: { include: { position: true } },
-          position: true,
+  const [period, employees, locations, extraTasks, positions] = await Promise.all([
+    prisma.monthlyPeriod.findUnique({
+      where: { id },
+      include: {
+        season: true,
+        location: true,
+        entries: {
+          include: {
+            employee: { include: { position: true, location: true } },
+            position: true,
+            workingLocation: true,
+          },
+          orderBy: [{ employee: { name: "asc" } }, { position: { name: "asc" } }],
         },
-        orderBy: [{ employee: { name: "asc" } }],
       },
-    },
-  });
+    }),
+    prisma.employee.findMany({
+      where: { active: true },
+      include: { position: true, location: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.location.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.monthlyExtraTask.findMany({
+      where: { periodId: id },
+      include: { employee: true, extraTaskType: true },
+      orderBy: [{ employee: { name: "asc" } }, { extraTaskType: { name: "asc" } }],
+    }),
+    prisma.position.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  ]);
 
   if (!period) notFound();
 
-  const employees = await prisma.employee.findMany({
-    where: { active: true },
-    include: { position: true },
-    orderBy: { name: "asc" },
-  });
-
   const periodLabel = formatPeriod(period.month, period.year);
+
+  const mapEmployee = (emp: typeof employees[0]) => ({
+    id: emp.id,
+    name: emp.name,
+    active: emp.active,
+    positionId: emp.positionId,
+    baseSalaryType: emp.baseSalaryType,
+    baseSalaryAmount: emp.baseSalaryAmount,
+    eligibleForServiceCharge: emp.eligibleForServiceCharge,
+    startDate: emp.startDate.toISOString(),
+    endDate: emp.endDate?.toISOString() ?? undefined,
+    locationId: emp.locationId ?? undefined,
+    notes: emp.notes ?? undefined,
+    createdAt: emp.createdAt.toISOString(),
+    updatedAt: emp.updatedAt.toISOString(),
+    position: emp.position ? {
+      id: emp.position.id,
+      name: emp.position.name,
+      multiplier: Number(emp.position.multiplier),
+      eligibleForServiceCharge: emp.position.eligibleForServiceCharge,
+      active: emp.position.active,
+      createdAt: emp.position.createdAt.toISOString(),
+      updatedAt: emp.position.updatedAt.toISOString(),
+    } : undefined,
+    location: emp.location ? {
+      id: emp.location.id,
+      name: emp.location.name,
+      active: emp.location.active,
+      createdAt: emp.location.createdAt.toISOString(),
+      updatedAt: emp.location.updatedAt.toISOString(),
+    } : undefined,
+  });
 
   return (
     <div className="space-y-4">
-      {/* Breadcrumb + title */}
       <div>
         <nav className="flex items-center gap-1.5 text-sm text-gray-500 mb-2">
           <Link href="/periods" className="hover:text-gray-700">Periódusok</Link>
@@ -53,7 +94,7 @@ export default async function AllocationPage({
         </nav>
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold text-gray-900">
-            {periodLabel} — Elosztási tábla
+            {periodLabel}{period.location ? ` — ${period.location.name}` : ""} — Elosztási tábla
           </h1>
           <StatusBadge status={period.status} />
         </div>
@@ -65,6 +106,7 @@ export default async function AllocationPage({
           month: period.month,
           year: period.year,
           status: period.status,
+          locationId: period.locationId ?? undefined,
           openingBalance: period.openingBalance,
           collectedServiceCharge: period.collectedServiceCharge,
           distributableBalance: period.distributableBalance,
@@ -91,6 +133,16 @@ export default async function AllocationPage({
           periodId: e.periodId,
           employeeId: e.employeeId,
           positionId: e.positionId,
+          workingLocationId: e.workingLocationId ?? undefined,
+          workingLocation: e.workingLocation ? {
+            id: e.workingLocation.id,
+            name: e.workingLocation.name,
+            active: e.workingLocation.active,
+            createdAt: e.workingLocation.createdAt.toISOString(),
+            updatedAt: e.workingLocation.updatedAt.toISOString(),
+          } : undefined,
+          isLoanEntry: e.isLoanEntry,
+          entryLabel: e.entryLabel ?? undefined,
           workedHours: Number(e.workedHours),
           overtimeHours: Number(e.overtimeHours),
           netWaiterSales: e.netWaiterSales ?? undefined,
@@ -108,30 +160,7 @@ export default async function AllocationPage({
           overrideReason: e.overrideReason ?? undefined,
           createdAt: e.createdAt.toISOString(),
           updatedAt: e.updatedAt.toISOString(),
-          employee: e.employee ? {
-            id: e.employee.id,
-            name: e.employee.name,
-            active: e.employee.active,
-            positionId: e.employee.positionId,
-            baseSalaryType: e.employee.baseSalaryType,
-            baseSalaryAmount: e.employee.baseSalaryAmount,
-            eligibleForServiceCharge: e.employee.eligibleForServiceCharge,
-            startDate: e.employee.startDate.toISOString(),
-            endDate: e.employee.endDate?.toISOString() ?? undefined,
-            location: e.employee.location ?? undefined,
-            notes: e.employee.notes ?? undefined,
-            createdAt: e.employee.createdAt.toISOString(),
-            updatedAt: e.employee.updatedAt.toISOString(),
-            position: e.employee.position ? {
-              id: e.employee.position.id,
-              name: e.employee.position.name,
-              multiplier: Number(e.employee.position.multiplier),
-              eligibleForServiceCharge: e.employee.position.eligibleForServiceCharge,
-              active: e.employee.position.active,
-              createdAt: e.employee.position.createdAt.toISOString(),
-              updatedAt: e.employee.position.updatedAt.toISOString(),
-            } : undefined,
-          } : undefined,
+          employee: e.employee ? mapEmployee(e.employee as typeof employees[0]) : undefined,
           position: e.position ? {
             id: e.position.id,
             name: e.position.name,
@@ -142,28 +171,53 @@ export default async function AllocationPage({
             updatedAt: e.position.updatedAt.toISOString(),
           } : undefined,
         }))}
-        availableEmployees={employees.map((emp) => ({
-          id: emp.id,
-          name: emp.name,
-          active: emp.active,
-          positionId: emp.positionId,
-          baseSalaryType: emp.baseSalaryType,
-          baseSalaryAmount: emp.baseSalaryAmount,
-          eligibleForServiceCharge: emp.eligibleForServiceCharge,
-          startDate: emp.startDate.toISOString(),
-          endDate: emp.endDate?.toISOString() ?? undefined,
-          location: emp.location ?? undefined,
-          notes: emp.notes ?? undefined,
-          createdAt: emp.createdAt.toISOString(),
-          updatedAt: emp.updatedAt.toISOString(),
-          position: emp.position ? {
-            id: emp.position.id,
-            name: emp.position.name,
-            multiplier: Number(emp.position.multiplier),
-            eligibleForServiceCharge: emp.position.eligibleForServiceCharge,
-            active: emp.position.active,
-            createdAt: emp.position.createdAt.toISOString(),
-            updatedAt: emp.position.updatedAt.toISOString(),
+        availableEmployees={employees.map(mapEmployee)}
+        availablePositions={positions.map((p) => ({
+          id: p.id,
+          name: p.name,
+          multiplier: Number(p.multiplier),
+          eligibleForServiceCharge: p.eligibleForServiceCharge,
+          active: p.active,
+          createdAt: p.createdAt.toISOString(),
+          updatedAt: p.updatedAt.toISOString(),
+        }))}
+        locations={locations.map((l) => ({
+          id: l.id,
+          name: l.name,
+          active: l.active,
+          createdAt: l.createdAt.toISOString(),
+          updatedAt: l.updatedAt.toISOString(),
+        }))}
+        initialExtraTasks={extraTasks.map((t) => ({
+          id: t.id,
+          periodId: t.periodId,
+          employeeId: t.employeeId,
+          extraTaskTypeId: t.extraTaskTypeId,
+          hours: t.hours ? Number(t.hours) : undefined,
+          amount: t.amount,
+          notes: t.notes ?? undefined,
+          createdAt: t.createdAt.toISOString(),
+          updatedAt: t.updatedAt.toISOString(),
+          employee: t.employee ? {
+            id: t.employee.id,
+            name: t.employee.name,
+            active: t.employee.active,
+            positionId: t.employee.positionId,
+            baseSalaryType: t.employee.baseSalaryType,
+            baseSalaryAmount: t.employee.baseSalaryAmount,
+            eligibleForServiceCharge: t.employee.eligibleForServiceCharge,
+            startDate: t.employee.startDate.toISOString(),
+            createdAt: t.employee.createdAt.toISOString(),
+            updatedAt: t.employee.updatedAt.toISOString(),
+          } : undefined,
+          extraTaskType: t.extraTaskType ? {
+            id: t.extraTaskType.id,
+            name: t.extraTaskType.name,
+            bonusType: t.extraTaskType.bonusType,
+            bonusAmount: t.extraTaskType.bonusAmount,
+            active: t.extraTaskType.active,
+            createdAt: t.extraTaskType.createdAt.toISOString(),
+            updatedAt: t.extraTaskType.updatedAt.toISOString(),
           } : undefined,
         }))}
         userRole={session.user.role}

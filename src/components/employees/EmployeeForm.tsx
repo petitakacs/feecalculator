@@ -2,17 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Employee, Position, Role } from "@/types";
+import { Employee, Location, Position, Role } from "@/types";
 import { showToast } from "@/components/ui/toaster";
 import { hasPermission } from "@/lib/permissions";
 
 interface EmployeeFormProps {
   employee: Partial<Employee> | null;
   positions: Position[];
+  locations: Location[];
   userRole: Role;
 }
 
-export function EmployeeForm({ employee, positions, userRole }: EmployeeFormProps) {
+export function EmployeeForm({ employee, positions, locations, userRole }: EmployeeFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const canWrite = hasPermission(userRole, "employees:write");
@@ -26,7 +27,7 @@ export function EmployeeForm({ employee, positions, userRole }: EmployeeFormProp
     eligibleForServiceCharge: employee?.eligibleForServiceCharge ?? true,
     startDate: employee?.startDate?.split("T")[0] ?? new Date().toISOString().split("T")[0],
     endDate: employee?.endDate?.split("T")[0] ?? "",
-    location: employee?.location ?? "",
+    locationId: employee?.locationId ?? "",
     notes: employee?.notes ?? "",
     active: employee?.active ?? true,
   });
@@ -43,7 +44,7 @@ export function EmployeeForm({ employee, positions, userRole }: EmployeeFormProp
       ...form,
       baseSalaryAmount: Math.round(form.baseSalaryAmount),
       endDate: form.endDate || null,
-      location: form.location || null,
+      locationId: form.locationId || null,
       notes: form.notes || null,
     };
 
@@ -139,14 +140,18 @@ export function EmployeeForm({ employee, positions, userRole }: EmployeeFormProp
           </div>
 
           <div>
-            <label className={labelClass}>Location</label>
-            <input
-              type="text"
-              value={form.location}
-              onChange={(e) => set("location", e.target.value)}
+            <label className={labelClass}>Lokáció (bázis)</label>
+            <select
+              value={form.locationId}
+              onChange={(e) => set("locationId", e.target.value)}
               disabled={!canWrite}
               className={inputClass}
-            />
+            >
+              <option value="">— Nincs megadva —</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
           </div>
         </div>
 

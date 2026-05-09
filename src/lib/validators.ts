@@ -1,5 +1,30 @@
 import { z } from "zod";
 
+export const CreateLocationSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  address: z.string().optional().nullable(),
+  active: z.boolean().default(true),
+});
+
+export const UpdateLocationSchema = CreateLocationSchema.partial();
+
+export const CreateExtraTaskTypeSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional().nullable(),
+  bonusType: z.enum(["FIXED_AMOUNT", "HOURLY_RATE"]),
+  bonusAmount: z.number().int().min(0),
+  active: z.boolean().default(true),
+});
+
+export const UpdateExtraTaskTypeSchema = CreateExtraTaskTypeSchema.partial();
+
+export const AssignExtraTaskSchema = z.object({
+  employeeId: z.string().min(1),
+  extraTaskTypeId: z.string().min(1),
+  hours: z.number().min(0).optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
 export const CreateEmployeeSchema = z.object({
   name: z.string().min(1, "Name is required"),
   positionId: z.string().min(1, "Position is required"),
@@ -13,7 +38,7 @@ export const CreateEmployeeSchema = z.object({
     .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
     .optional()
     .nullable(),
-  location: z.string().optional().nullable(),
+  locationId: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   active: z.boolean().default(true),
 });
@@ -49,6 +74,7 @@ export const CreatePeriodSchema = z.object({
   month: z.number().int().min(1).max(12),
   year: z.number().int().min(2020).max(2100),
   seasonId: z.string().min(1, "Season is required"),
+  locationId: z.string().optional().nullable(),
   openingBalance: z.number().int().default(0),
   collectedServiceCharge: z.number().int().min(0),
   notes: z.string().optional().nullable(),
@@ -73,6 +99,9 @@ export const UpdateEntrySchema = z.object({
   notes: z.string().optional().nullable(),
   overrideFlag: z.boolean().optional(),
   overrideReason: z.string().optional().nullable(),
+  workingLocationId: z.string().optional().nullable(),
+  isLoanEntry: z.boolean().optional(),
+  entryLabel: z.string().optional().nullable(),
 });
 
 export const ApprovalActionSchema = z.object({

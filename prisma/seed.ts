@@ -45,6 +45,26 @@ async function main() {
 
   console.log(`Created users: ${admin.email}, ${manager.email}, ${bulead.email}`);
 
+  // Create locations
+  const [loc1, loc2, loc3] = await Promise.all([
+    prisma.location.upsert({
+      where: { name: "Főétterem" },
+      update: {},
+      create: { name: "Főétterem", address: "Budapest, Fő u. 1.", active: true },
+    }),
+    prisma.location.upsert({
+      where: { name: "Terasz" },
+      update: {},
+      create: { name: "Terasz", address: "Budapest, Fő u. 1. – kert", active: true },
+    }),
+    prisma.location.upsert({
+      where: { name: "Bár" },
+      update: {},
+      create: { name: "Bár", address: "Budapest, Fő u. 1. – bár", active: true },
+    }),
+  ]);
+  console.log(`Created 3 locations`);
+
   // Create positions
   const positions = await Promise.all([
     prisma.position.upsert({
@@ -131,7 +151,27 @@ async function main() {
   });
   console.log(`Created season: ${season.name}`);
 
-  // Create employees
+  // Create extra task types
+  await Promise.all([
+    prisma.extraTaskType.upsert({
+      where: { name: "HR feladatok" },
+      update: {},
+      create: { name: "HR feladatok", bonusType: "FIXED_AMOUNT", bonusAmount: 20000, active: true },
+    }),
+    prisma.extraTaskType.upsert({
+      where: { name: "Betanítás" },
+      update: {},
+      create: { name: "Betanítás", bonusType: "HOURLY_RATE", bonusAmount: 1500, active: true },
+    }),
+    prisma.extraTaskType.upsert({
+      where: { name: "Leltározás" },
+      update: {},
+      create: { name: "Leltározás", bonusType: "HOURLY_RATE", bonusAmount: 1200, active: true },
+    }),
+  ]);
+  console.log(`Created 3 extra task types`);
+
+  // Create employees (assigned to locations)
   const employees = await Promise.all([
     prisma.employee.upsert({
       where: { id: "emp-1" },
@@ -140,8 +180,9 @@ async function main() {
         id: "emp-1",
         name: "Kovács Anna",
         positionId: waiterPos.id,
+        locationId: loc1.id,
         baseSalaryType: "HOURLY",
-        baseSalaryAmount: 2100, // 2 100 Ft/óra
+        baseSalaryAmount: 2100,
         eligibleForServiceCharge: true,
         startDate: new Date("2022-03-15"),
         active: true,
@@ -154,6 +195,7 @@ async function main() {
         id: "emp-2",
         name: "Nagy Péter",
         positionId: waiterPos.id,
+        locationId: loc1.id,
         baseSalaryType: "HOURLY",
         baseSalaryAmount: 2100,
         eligibleForServiceCharge: true,
@@ -168,8 +210,9 @@ async function main() {
         id: "emp-3",
         name: "Tóth Eszter",
         positionId: baristaPos.id,
+        locationId: loc2.id,
         baseSalaryType: "HOURLY",
-        baseSalaryAmount: 2000, // 2 000 Ft/óra
+        baseSalaryAmount: 2000,
         eligibleForServiceCharge: true,
         startDate: new Date("2023-01-10"),
         active: true,
@@ -182,6 +225,7 @@ async function main() {
         id: "emp-4",
         name: "Szabó Dávid",
         positionId: baristaPos.id,
+        locationId: loc2.id,
         baseSalaryType: "HOURLY",
         baseSalaryAmount: 2000,
         eligibleForServiceCharge: true,
@@ -196,8 +240,9 @@ async function main() {
         id: "emp-5",
         name: "Horváth Réka",
         positionId: shiftLeadPos.id,
+        locationId: loc1.id,
         baseSalaryType: "HOURLY",
-        baseSalaryAmount: 2300, // 2 300 Ft/óra
+        baseSalaryAmount: 2300,
         eligibleForServiceCharge: true,
         startDate: new Date("2020-11-01"),
         active: true,
@@ -210,6 +255,7 @@ async function main() {
         id: "emp-6",
         name: "Varga Bálint",
         positionId: shiftLeadPos.id,
+        locationId: loc3.id,
         baseSalaryType: "HOURLY",
         baseSalaryAmount: 2300,
         eligibleForServiceCharge: true,
@@ -224,8 +270,9 @@ async function main() {
         id: "emp-7",
         name: "Molnár Katalin",
         positionId: asmPos.id,
+        locationId: loc1.id,
         baseSalaryType: "MONTHLY",
-        baseSalaryAmount: 650000, // 650 000 Ft/hó
+        baseSalaryAmount: 650000,
         eligibleForServiceCharge: true,
         startDate: new Date("2019-09-01"),
         active: true,
@@ -238,8 +285,9 @@ async function main() {
         id: "emp-8",
         name: "Kiss Gábor",
         positionId: managerPos.id,
+        locationId: loc1.id,
         baseSalaryType: "MONTHLY",
-        baseSalaryAmount: 850000, // 850 000 Ft/hó
+        baseSalaryAmount: 850000,
         eligibleForServiceCharge: true,
         startDate: new Date("2018-05-15"),
         active: true,
@@ -248,51 +296,47 @@ async function main() {
   ]);
   console.log(`Created ${employees.length} employees`);
 
-  // Create a completed monthly period for December 2024
-  // Referencia óradíj kalkuláció (dec. 2024):
-  // emp-1: 8 000 000 Ft eladás → gross SC = 312 000, net SC = 254 280
-  // emp-2: 7 000 000 Ft eladás → gross SC = 273 000, net SC = 222 495
-  // Össz waiter net SC = 476 775 Ft, össz óra = 336
-  // Referencia óradíj = 476 775 / 336 ≈ 1 419 → kerekítve: 1 400 Ft/óra
+  // Create a completed monthly period for December 2024 (Főétterem)
   const REF = 1400;
 
   const period = await prisma.monthlyPeriod.upsert({
-    where: { month_year: { month: 12, year: 2024 } },
+    where: { month_year_locationId: { month: 12, year: 2024, locationId: loc1.id } },
     update: {},
     create: {
       month: 12,
       year: 2024,
       seasonId: season.id,
-      openingBalance: 150000,       // 150 000 Ft áthozat
-      collectedServiceCharge: 2200000, // 2 200 000 Ft befolyt SC
-      distributableBalance: 2350000,   // 150 000 + 2 200 000
+      locationId: loc1.id,
+      openingBalance: 150000,
+      collectedServiceCharge: 2200000,
+      distributableBalance: 2350000,
       targetDistributionTotal: 2201240,
       approvedDistributionTotal: 2201240,
-      closingBalance: 148760,          // 2 350 000 - 2 201 240
+      closingBalance: 148760,
       status: "CLOSED",
       lockedAt: new Date("2025-01-05"),
       lockedBy: bulead.id,
       notes: "2024. december – ünnepi időszak, magas forgalom",
     },
   });
-  console.log(`Created period: Dec 2024 (CLOSED)`);
+  console.log(`Created period: Dec 2024 (CLOSED) – Főétterem`);
 
-  // December 2024 bejegyzések (REF = 1 400 Ft/óra)
+  // December 2024 entries
   const dec24Entries = [
     {
       employeeId: "emp-1",
       positionId: waiterPos.id,
       workedHours: 176,
       overtimeHours: 16,
-      netWaiterSales: 8000000, // 8 000 000 Ft net eladás
-      calculatedGrossServiceCharge: Math.round(8000000 * 0.039),   // 312 000
-      calculatedNetServiceCharge: Math.round(Math.round(8000000 * 0.039) * 0.815), // 254 280
+      netWaiterSales: 8000000,
+      calculatedGrossServiceCharge: Math.round(8000000 * 0.039),
+      calculatedNetServiceCharge: Math.round(Math.round(8000000 * 0.039) * 0.815),
       targetNetHourlyServiceCharge: REF,
-      targetServiceChargeAmount: 176 * REF,                        // 246 400
-      bonus: 15000,       // 15 000 Ft prémium
-      overtimePayment: 25200, // 16 óra * 1 575 Ft
+      targetServiceChargeAmount: 176 * REF,
+      bonus: 15000,
+      overtimePayment: 25200,
       manualCorrection: 0,
-      finalApprovedAmount: 176 * REF + 15000 + 25200,              // 286 600
+      finalApprovedAmount: 176 * REF + 15000 + 25200,
       overrideFlag: false,
     },
     {
@@ -300,47 +344,15 @@ async function main() {
       positionId: waiterPos.id,
       workedHours: 160,
       overtimeHours: 8,
-      netWaiterSales: 7000000, // 7 000 000 Ft net eladás
+      netWaiterSales: 7000000,
       calculatedGrossServiceCharge: Math.round(7000000 * 0.039),
       calculatedNetServiceCharge: Math.round(Math.round(7000000 * 0.039) * 0.815),
       targetNetHourlyServiceCharge: REF,
-      targetServiceChargeAmount: 160 * REF,                        // 224 000
+      targetServiceChargeAmount: 160 * REF,
       bonus: 0,
-      overtimePayment: 16800, // 8 óra * 2 100 Ft
+      overtimePayment: 16800,
       manualCorrection: 0,
-      finalApprovedAmount: 160 * REF + 16800,                      // 240 800
-      overrideFlag: false,
-    },
-    {
-      employeeId: "emp-3",
-      positionId: baristaPos.id,
-      workedHours: 168,
-      overtimeHours: 0,
-      netWaiterSales: null,
-      calculatedGrossServiceCharge: null,
-      calculatedNetServiceCharge: null,
-      targetNetHourlyServiceCharge: Math.round(REF * 0.9),         // 1 260
-      targetServiceChargeAmount: 168 * Math.round(REF * 0.9),     // 211 680
-      bonus: 0,
-      overtimePayment: 0,
-      manualCorrection: 0,
-      finalApprovedAmount: 168 * Math.round(REF * 0.9),
-      overrideFlag: false,
-    },
-    {
-      employeeId: "emp-4",
-      positionId: baristaPos.id,
-      workedHours: 152,
-      overtimeHours: 0,
-      netWaiterSales: null,
-      calculatedGrossServiceCharge: null,
-      calculatedNetServiceCharge: null,
-      targetNetHourlyServiceCharge: Math.round(REF * 0.9),
-      targetServiceChargeAmount: 152 * Math.round(REF * 0.9),     // 191 520
-      bonus: 0,
-      overtimePayment: 0,
-      manualCorrection: 8000, // +8 000 Ft korrekció
-      finalApprovedAmount: 152 * Math.round(REF * 0.9) + 8000,    // 199 520
+      finalApprovedAmount: 160 * REF + 16800,
       overrideFlag: false,
     },
     {
@@ -351,28 +363,12 @@ async function main() {
       netWaiterSales: null,
       calculatedGrossServiceCharge: null,
       calculatedNetServiceCharge: null,
-      targetNetHourlyServiceCharge: Math.round(REF * 1.15),        // 1 610
-      targetServiceChargeAmount: 176 * Math.round(REF * 1.15),    // 283 360
-      bonus: 0,
-      overtimePayment: 18400, // 8 óra * 2 300 Ft
-      manualCorrection: 0,
-      finalApprovedAmount: 176 * Math.round(REF * 1.15) + 18400,  // 301 760
-      overrideFlag: false,
-    },
-    {
-      employeeId: "emp-6",
-      positionId: shiftLeadPos.id,
-      workedHours: 160,
-      overtimeHours: 0,
-      netWaiterSales: null,
-      calculatedGrossServiceCharge: null,
-      calculatedNetServiceCharge: null,
       targetNetHourlyServiceCharge: Math.round(REF * 1.15),
-      targetServiceChargeAmount: 160 * Math.round(REF * 1.15),    // 257 600
+      targetServiceChargeAmount: 176 * Math.round(REF * 1.15),
       bonus: 0,
-      overtimePayment: 0,
+      overtimePayment: 18400,
       manualCorrection: 0,
-      finalApprovedAmount: 160 * Math.round(REF * 1.15),
+      finalApprovedAmount: 176 * Math.round(REF * 1.15) + 18400,
       overrideFlag: false,
     },
     {
@@ -383,8 +379,8 @@ async function main() {
       netWaiterSales: null,
       calculatedGrossServiceCharge: null,
       calculatedNetServiceCharge: null,
-      targetNetHourlyServiceCharge: Math.round(REF * 1.3),         // 1 820
-      targetServiceChargeAmount: 176 * Math.round(REF * 1.3),     // 320 320
+      targetNetHourlyServiceCharge: Math.round(REF * 1.3),
+      targetServiceChargeAmount: 176 * Math.round(REF * 1.3),
       bonus: 0,
       overtimePayment: 0,
       manualCorrection: 0,
@@ -399,12 +395,12 @@ async function main() {
       netWaiterSales: null,
       calculatedGrossServiceCharge: null,
       calculatedNetServiceCharge: null,
-      targetNetHourlyServiceCharge: Math.round(REF * 1.5),         // 2 100
-      targetServiceChargeAmount: 176 * Math.round(REF * 1.5),     // 369 600
-      bonus: 30000, // 30 000 Ft ünnepi prémium
+      targetNetHourlyServiceCharge: Math.round(REF * 1.5),
+      targetServiceChargeAmount: 176 * Math.round(REF * 1.5),
+      bonus: 30000,
       overtimePayment: 0,
       manualCorrection: 0,
-      finalApprovedAmount: 380000, // fix megállapodott összeg
+      finalApprovedAmount: 380000,
       overrideFlag: true,
       overrideReason: "Rögzített vezetői összeg, BU Lead jóváhagyásával",
     },
@@ -413,9 +409,10 @@ async function main() {
   for (const entry of dec24Entries) {
     await prisma.monthlyEmployeeEntry.upsert({
       where: {
-        periodId_employeeId: {
+        periodId_employeeId_positionId: {
           periodId: period.id,
           employeeId: entry.employeeId,
+          positionId: entry.positionId,
         },
       },
       update: {},
@@ -427,7 +424,7 @@ async function main() {
   }
   console.log(`Created ${dec24Entries.length} entries for Dec 2024`);
 
-  // Add approval record for the closed period
+  // Add approval records for the closed period
   await prisma.periodApproval.create({
     data: {
       periodId: period.id,
@@ -455,15 +452,16 @@ async function main() {
     },
   });
 
-  // Create a draft period for January 2025
-  const jan25 = await prisma.monthlyPeriod.upsert({
-    where: { month_year: { month: 1, year: 2025 } },
+  // Create a draft period for January 2025 (Főétterem)
+  await prisma.monthlyPeriod.upsert({
+    where: { month_year_locationId: { month: 1, year: 2025, locationId: loc1.id } },
     update: {},
     create: {
       month: 1,
       year: 2025,
       seasonId: season.id,
-      openingBalance: 148760, // decemberi záróegyenleg
+      locationId: loc1.id,
+      openingBalance: 148760,
       collectedServiceCharge: 0,
       distributableBalance: 148760,
       targetDistributionTotal: 0,
@@ -473,7 +471,7 @@ async function main() {
       notes: "2025. január – add meg a befolyt SC összeget és a dolgozói órákat",
     },
   });
-  console.log(`Created draft period: Jan 2025`);
+  console.log(`Created draft period: Jan 2025 – Főétterem`);
 
   // Audit log entry for seed
   await prisma.auditLog.create({

@@ -9,7 +9,18 @@ interface Season {
   name: string;
 }
 
-export function CreatePeriodButton({ seasons }: { seasons: Season[] }) {
+interface Location {
+  id: string;
+  name: string;
+}
+
+export function CreatePeriodButton({
+  seasons,
+  locations,
+}: {
+  seasons: Season[];
+  locations: Location[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -17,6 +28,7 @@ export function CreatePeriodButton({ seasons }: { seasons: Season[] }) {
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
     seasonId: seasons[0]?.id ?? "",
+    locationId: locations[0]?.id ?? "",
     openingBalance: 0,
     collectedServiceCharge: 0,
     notes: "",
@@ -90,17 +102,32 @@ export function CreatePeriodButton({ seasons }: { seasons: Season[] }) {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Season</label>
-                <select
-                  value={form.seasonId}
-                  onChange={(e) => setForm((f) => ({ ...f, seasonId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                >
-                  {seasons.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Season</label>
+                  <select
+                    value={form.seasonId}
+                    onChange={(e) => setForm((f) => ({ ...f, seasonId: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  >
+                    {seasons.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Lokáció</label>
+                  <select
+                    value={form.locationId}
+                    onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  >
+                    <option value="">— Nincs —</option>
+                    {locations.map((l) => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>

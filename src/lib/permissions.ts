@@ -21,7 +21,8 @@ export type Permission =
   | "audit:read"
   | "export:payroll"
   | "import:data"
-  | "simulation:run";
+  | "simulation:run"
+  | "settings:write";
 
 const rolePermissions: Record<Role, Permission[]> = {
   ADMIN: [
@@ -46,6 +47,7 @@ const rolePermissions: Record<Role, Permission[]> = {
     "export:payroll",
     "import:data",
     "simulation:run",
+    "settings:write",
   ],
   BUSINESS_UNIT_LEAD: [
     "periods:read",
@@ -68,6 +70,7 @@ const rolePermissions: Record<Role, Permission[]> = {
     "export:payroll",
     "import:data",
     "simulation:run",
+    "settings:write",
   ],
   STORE_MANAGER: [
     "periods:read",

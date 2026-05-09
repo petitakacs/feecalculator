@@ -66,7 +66,7 @@ export async function POST(
 
     await prisma.monthlyEmployeeEntry.upsert({
       where: {
-        periodId_employeeId: { periodId: id, employeeId: employee.id },
+        periodId_employeeId_positionId: { periodId: id, employeeId: employee.id, positionId: employee.positionId },
       },
       create: {
         periodId: id,

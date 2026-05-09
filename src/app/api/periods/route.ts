@@ -15,7 +15,7 @@ export async function GET() {
   }
 
   const periods = await prisma.monthlyPeriod.findMany({
-    include: { season: true },
+    include: { season: true, location: true },
     orderBy: [{ year: "desc" }, { month: "desc" }],
   });
 
@@ -35,13 +35,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
 
-  // Check for existing period
-  const existing = await prisma.monthlyPeriod.findUnique({
-    where: { month_year: { month: parsed.data.month, year: parsed.data.year } },
+  // Check for existing period (same location + month/year)
+  const locationId = parsed.data.locationId ?? null;
+  const existing = await prisma.monthlyPeriod.findFirst({
+    where: {
+      month: parsed.data.month,
+      year: parsed.data.year,
+      locationId: locationId,
+    },
   });
   if (existing) {
     return NextResponse.json(
-      { error: "A period for this month/year already exists" },
+      { error: "A period for this month/year and location already exists" },
       { status: 409 }
     );
   }
@@ -56,12 +61,13 @@ export async function POST(req: NextRequest) {
       month: parsed.data.month,
       year: parsed.data.year,
       seasonId: parsed.data.seasonId,
+      locationId: parsed.data.locationId ?? null,
       openingBalance: parsed.data.openingBalance,
       collectedServiceCharge: parsed.data.collectedServiceCharge,
       distributableBalance,
       notes: parsed.data.notes,
     },
-    include: { season: true },
+    include: { season: true, location: true },
   });
 
   await createAuditLog({

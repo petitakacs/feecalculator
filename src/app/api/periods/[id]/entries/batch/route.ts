@@ -29,26 +29,34 @@ export async function POST(
     return NextResponse.json({ error: "employeeIds array is required" }, { status: 400 });
   }
 
-  // Get existing entries for this period
+  // Get existing entries for this period (primary-position entries only)
   const existingEntries = await prisma.monthlyEmployeeEntry.findMany({
     where: { periodId: id },
-    select: { employeeId: true },
+    select: { employeeId: true, positionId: true },
   });
-  const existingEmployeeIds = new Set(existingEntries.map((e) => e.employeeId));
+  // Key: "employeeId:positionId"
+  const existingKeys = new Set(existingEntries.map((e) => `${e.employeeId}:${e.positionId}`));
 
-  // Get employees that don't already have entries
-  const missingIds = employeeIds.filter((eid) => !existingEmployeeIds.has(eid));
+  // Batch add only adds the primary position for each employee; skip if already present
+  const employees = await prisma.employee.findMany({
+    where: { id: { in: employeeIds } },
+    select: { id: true, positionId: true },
+  });
+  const missingEmployees = employees.filter(
+    (emp) => !existingKeys.has(`${emp.id}:${emp.positionId}`)
+  );
+  const missingIds = missingEmployees.map((e) => e.id);
 
   if (missingIds.length === 0) {
     return NextResponse.json({ created: 0, skipped: employeeIds.length });
   }
 
-  const employees = await prisma.employee.findMany({
+  const fullEmployees = await prisma.employee.findMany({
     where: { id: { in: missingIds } },
   });
 
   const created: string[] = [];
-  for (const employee of employees) {
+  for (const employee of fullEmployees) {
     const entry = await prisma.monthlyEmployeeEntry.create({
       data: {
         periodId: id,

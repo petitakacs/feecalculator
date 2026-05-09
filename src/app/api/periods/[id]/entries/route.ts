@@ -16,8 +16,8 @@ export async function GET(
 
   const entries = await prisma.monthlyEmployeeEntry.findMany({
     where: { periodId: id },
-    include: { employee: { include: { position: true } }, position: true },
-    orderBy: [{ employee: { name: "asc" } }],
+    include: { employee: { include: { position: true, location: true } }, position: true, workingLocation: true },
+    orderBy: [{ employee: { name: "asc" } }, { position: { name: "asc" } }],
   });
 
   return NextResponse.json(entries);
@@ -41,7 +41,7 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { employeeId, ...entryData } = body;
+  const { employeeId, positionId: explicitPositionId, entryLabel, workingLocationId, isLoanEntry, ...entryData } = body;
 
   if (!employeeId) {
     return NextResponse.json({ error: "employeeId is required" }, { status: 400 });
@@ -53,12 +53,20 @@ export async function POST(
   });
   if (!employee) return NextResponse.json({ error: "Employee not found" }, { status: 404 });
 
+  // Use explicitly provided positionId (for multi-role entries) or default to employee's primary position
+  const positionId = explicitPositionId ?? employee.positionId;
+
   const entry = await prisma.monthlyEmployeeEntry.upsert({
-    where: { periodId_employeeId: { periodId: id, employeeId } },
+    where: {
+      periodId_employeeId_positionId: { periodId: id, employeeId, positionId },
+    },
     create: {
       periodId: id,
       employeeId,
-      positionId: employee.positionId,
+      positionId,
+      entryLabel: entryLabel ?? null,
+      workingLocationId: workingLocationId ?? null,
+      isLoanEntry: isLoanEntry ?? false,
       workedHours: entryData.workedHours ?? 0,
       overtimeHours: entryData.overtimeHours ?? 0,
       netWaiterSales: entryData.netWaiterSales ?? null,
@@ -68,6 +76,9 @@ export async function POST(
       notes: entryData.notes ?? null,
     },
     update: {
+      entryLabel: entryLabel ?? null,
+      workingLocationId: workingLocationId ?? null,
+      isLoanEntry: isLoanEntry ?? false,
       workedHours: entryData.workedHours ?? 0,
       overtimeHours: entryData.overtimeHours ?? 0,
       netWaiterSales: entryData.netWaiterSales ?? null,
@@ -76,7 +87,7 @@ export async function POST(
       manualCorrection: entryData.manualCorrection ?? 0,
       notes: entryData.notes ?? null,
     },
-    include: { employee: { include: { position: true } }, position: true },
+    include: { employee: { include: { position: true } }, position: true, workingLocation: true },
   });
 
   await createAuditLog({
@@ -134,7 +145,7 @@ export async function PATCH(
       ...parsed.data,
       overrideFlag: shouldSetOverride || parsed.data.overrideFlag || existing.overrideFlag,
     },
-    include: { employee: { include: { position: true } }, position: true },
+    include: { employee: { include: { position: true, location: true } }, position: true, workingLocation: true },
   });
 
   await createAuditLog({

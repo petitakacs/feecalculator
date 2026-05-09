@@ -74,6 +74,7 @@ export async function POST(
       Number(entry.position.multiplier);
 
     allEntries.push({
+      entryId: entry.id,
       employeeId: entry.employeeId,
       positionId: entry.positionId,
       multiplier: positionMultiplier,
@@ -109,9 +110,7 @@ export async function POST(
   // Update all entries with calculated values
   await Promise.all(
     result.entries.map(async (entryResult) => {
-      const dbEntry = period.entries.find(
-        (e) => e.employeeId === entryResult.employeeId
-      );
+      const dbEntry = period.entries.find((e) => e.id === entryResult.entryId);
       if (!dbEntry) return;
 
       return prisma.monthlyEmployeeEntry.update({

@@ -12,6 +12,8 @@ import {
   BarChart2,
   ClipboardList,
   Calculator,
+  MapPin,
+  ListChecks,
 } from "lucide-react";
 
 const navItems = [
@@ -20,7 +22,9 @@ const navItems = [
   { href: "/simulation", label: "Simulation", icon: Calculator },
   { href: "/employees", label: "Employees", icon: Users },
   { href: "/positions", label: "Positions", icon: Briefcase },
+  { href: "/locations", label: "Locations", icon: MapPin },
   { href: "/seasons", label: "Seasons", icon: Layers },
+  { href: "/extra-task-types", label: "Extra Tasks", icon: ListChecks },
   { href: "/reports", label: "Reports", icon: BarChart2 },
   { href: "/audit", label: "Audit Log", icon: ClipboardList },
   { href: "/settings", label: "Settings", icon: Settings },

@@ -12,14 +12,14 @@ export default async function PeriodsPage() {
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
-  const periods = await prisma.monthlyPeriod.findMany({
-    orderBy: [{ year: "desc" }, { month: "desc" }],
-    include: { season: true },
-  });
-
-  const seasons = await prisma.season.findMany({
-    where: { active: true },
-  });
+  const [periods, seasons, locations] = await Promise.all([
+    prisma.monthlyPeriod.findMany({
+      orderBy: [{ year: "desc" }, { month: "desc" }],
+      include: { season: true, location: true },
+    }),
+    prisma.season.findMany({ where: { active: true } }),
+    prisma.location.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  ]);
 
   const canDelete = hasPermission(session.user.role, "periods:delete");
 
@@ -27,7 +27,10 @@ export default async function PeriodsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Monthly Periods</h1>
-        <CreatePeriodButton seasons={seasons.map((s) => ({ id: s.id, name: s.name }))} />
+        <CreatePeriodButton
+          seasons={seasons.map((s) => ({ id: s.id, name: s.name }))}
+          locations={locations.map((l) => ({ id: l.id, name: l.name }))}
+        />
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -35,6 +38,7 @@ export default async function PeriodsPage() {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Period</th>
+              <th className="text-left px-6 py-3 font-medium text-gray-500">Lokáció</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Season</th>
               <th className="text-right px-6 py-3 font-medium text-gray-500">Collected SC</th>
               <th className="text-right px-6 py-3 font-medium text-gray-500">Opening Balance</th>
@@ -48,6 +52,9 @@ export default async function PeriodsPage() {
               <tr key={period.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 font-medium">
                   {formatPeriod(period.month, period.year)}
+                </td>
+                <td className="px-6 py-4 text-gray-500">
+                  {period.location?.name ?? <span className="text-gray-300">—</span>}
                 </td>
                 <td className="px-6 py-4 text-gray-500">{period.season.name}</td>
                 <td className="px-6 py-4 text-right">
@@ -92,7 +99,7 @@ export default async function PeriodsPage() {
             ))}
             {periods.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                   No periods yet. Create your first period to get started.
                 </td>
               </tr>

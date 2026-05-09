@@ -14,6 +14,7 @@ export interface WaiterEntry {
 }
 
 export interface PositionEntry {
+  entryId: string;
   employeeId: string;
   positionId: string;
   multiplier: number;
@@ -37,6 +38,7 @@ export interface CalculationResult {
 }
 
 export interface EntryResult {
+  entryId: string;
   employeeId: string;
   calculatedGrossServiceChargeCents: number | null;
   calculatedNetServiceChargeCents: number | null;
@@ -183,6 +185,7 @@ export function calculatePeriod(
     const waiterResult = waiterMap.get(entry.employeeId);
 
     entries.push({
+      entryId: entry.entryId,
       employeeId: entry.employeeId,
       calculatedGrossServiceChargeCents: waiterResult?.gross ?? null,
       calculatedNetServiceChargeCents: waiterResult?.net ?? null,

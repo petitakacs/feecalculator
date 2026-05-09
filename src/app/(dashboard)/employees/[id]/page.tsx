@@ -16,19 +16,18 @@ export default async function EmployeeDetailPage({
 
   const isNew = id === "new";
 
-  const employee = isNew
-    ? null
-    : await prisma.employee.findUnique({
-        where: { id },
-        include: { position: true },
-      });
+  const [employee, positions, locations] = await Promise.all([
+    isNew
+      ? Promise.resolve(null)
+      : prisma.employee.findUnique({
+          where: { id },
+          include: { position: true, location: true },
+        }),
+    prisma.position.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.location.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  ]);
 
   if (!isNew && !employee) notFound();
-
-  const positions = await prisma.position.findMany({
-    where: { active: true },
-    orderBy: { name: "asc" },
-  });
 
   return (
     <div className="space-y-6">
@@ -55,7 +54,7 @@ export default async function EmployeeDetailPage({
                 eligibleForServiceCharge: employee.eligibleForServiceCharge,
                 startDate: employee.startDate.toISOString().split("T")[0],
                 endDate: employee.endDate?.toISOString().split("T")[0] ?? undefined,
-                location: employee.location ?? undefined,
+                locationId: employee.locationId ?? undefined,
                 notes: employee.notes ?? undefined,
                 createdAt: employee.createdAt.toISOString(),
                 updatedAt: employee.updatedAt.toISOString(),
@@ -70,6 +69,14 @@ export default async function EmployeeDetailPage({
           active: p.active,
           createdAt: p.createdAt.toISOString(),
           updatedAt: p.updatedAt.toISOString(),
+        }))}
+        locations={locations.map((l) => ({
+          id: l.id,
+          name: l.name,
+          address: l.address ?? undefined,
+          active: l.active,
+          createdAt: l.createdAt.toISOString(),
+          updatedAt: l.updatedAt.toISOString(),
         }))}
         userRole={session.user.role}
       />

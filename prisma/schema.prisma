@@ -1,5 +1,5 @@
 // All percentages stored as decimals (e.g., 0.039 for 3.9%)
-// All monetary amounts stored as integers (cents) to avoid float issues
+// All monetary amounts stored as integers (HUF) to avoid float issues
 
 generator client {
   provider = "prisma-client-js"
@@ -10,6 +10,23 @@ datasource db {
   url          = env("DATABASE_URL")
   relationMode = "prisma"
 }
+
+// ─── Location ────────────────────────────────────────────────────────────────
+
+model Location {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  address     String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  employees         Employee[]
+  periods           MonthlyPeriod[]
+  loanEntries       MonthlyEmployeeEntry[] @relation("WorkingLocation")
+}
+
+// ─── Users & Auth ─────────────────────────────────────────────────────────────
 
 model User {
   id           String           @id @default(cuid())
@@ -32,6 +49,8 @@ enum Role {
   PAYROLL_EXPORT_USER
 }
 
+// ─── Positions ────────────────────────────────────────────────────────────────
+
 model Position {
   id                       String                 @id @default(cuid())
   name                     String                 @unique
@@ -48,6 +67,8 @@ model Position {
   monthlyEntries           MonthlyEmployeeEntry[]
 }
 
+// ─── Employees ────────────────────────────────────────────────────────────────
+
 model Employee {
   id                       String                 @id @default(cuid())
   name                     String
@@ -59,19 +80,25 @@ model Employee {
   eligibleForServiceCharge Boolean                @default(true)
   startDate                DateTime
   endDate                  DateTime?
-  location                 String?
+  // FK-based location (replaces former String? location field)
+  locationId               String?
+  location                 Location?              @relation(fields: [locationId], references: [id])
   notes                    String?                @db.Text
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
   monthlyEntries           MonthlyEmployeeEntry[]
+  extraTasks               MonthlyExtraTask[]
 
   @@index([positionId])
+  @@index([locationId])
 }
 
 enum SalaryType {
   HOURLY
   MONTHLY
 }
+
+// ─── Seasons ──────────────────────────────────────────────────────────────────
 
 model Season {
   id                       String               @id @default(cuid())
@@ -121,10 +148,15 @@ model BusinessRule {
   updatedAt            DateTime  @updatedAt
 }
 
+// ─── Monthly Periods ──────────────────────────────────────────────────────────
+
 model MonthlyPeriod {
   id                        String                 @id @default(cuid())
   month                     Int
   year                      Int
+  // locationId null = legacy / location-agnostic period
+  locationId                String?
+  location                  Location?              @relation(fields: [locationId], references: [id])
   seasonId                  String
   season                    Season                 @relation(fields: [seasonId], references: [id])
   openingBalance            Int                    @default(0)
@@ -142,9 +174,13 @@ model MonthlyPeriod {
   entries                   MonthlyEmployeeEntry[]
   approvals                 PeriodApproval[]
   auditLogs                 AuditLog[]
+  extraTasks                MonthlyExtraTask[]
 
-  @@unique([month, year])
+  // Per-location uniqueness: one period per location per month/year
+  // (NULL locationId rows don't conflict with each other in MySQL)
+  @@unique([month, year, locationId])
   @@index([seasonId])
+  @@index([locationId])
 }
 
 enum PeriodStatus {
@@ -154,14 +190,23 @@ enum PeriodStatus {
   CLOSED
 }
 
+// ─── Monthly Entries ──────────────────────────────────────────────────────────
+
 model MonthlyEmployeeEntry {
   id                           String        @id @default(cuid())
   periodId                     String
   period                       MonthlyPeriod @relation(fields: [periodId], references: [id])
   employeeId                   String
   employee                     Employee      @relation(fields: [employeeId], references: [id])
+  // positionId can differ from employee.positionId for multi-role entries
   positionId                   String
   position                     Position      @relation(fields: [positionId], references: [id])
+  // For loan / secondment: which location this entry is worked at
+  workingLocationId            String?
+  workingLocation              Location?     @relation("WorkingLocation", fields: [workingLocationId], references: [id])
+  isLoanEntry                  Boolean       @default(false)
+  // Optional label for multi-role entries, e.g. "Felszolgáló műszak"
+  entryLabel                   String?
   workedHours                  Decimal       @default(0)
   overtimeHours                Decimal       @default(0)
   netWaiterSales               Int?
@@ -180,11 +225,57 @@ model MonthlyEmployeeEntry {
   createdAt                    DateTime      @default(now())
   updatedAt                    DateTime      @updatedAt
 
-  @@unique([periodId, employeeId])
+  // Multi-role: same employee can have multiple entries per period if positionId differs
+  @@unique([periodId, employeeId, positionId])
   @@index([periodId])
   @@index([employeeId])
   @@index([positionId])
+  @@index([workingLocationId])
 }
+
+// ─── Extra Task Types ─────────────────────────────────────────────────────────
+
+enum ExtraBonusType {
+  FIXED_AMOUNT
+  HOURLY_RATE
+}
+
+model ExtraTaskType {
+  id          String         @id @default(cuid())
+  name        String         @unique
+  description String?
+  bonusType   ExtraBonusType
+  // Ft per month (FIXED_AMOUNT) or Ft per hour (HOURLY_RATE)
+  bonusAmount Int
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  assignments MonthlyExtraTask[]
+}
+
+model MonthlyExtraTask {
+  id              String        @id @default(cuid())
+  periodId        String
+  period          MonthlyPeriod @relation(fields: [periodId], references: [id])
+  employeeId      String
+  employee        Employee      @relation(fields: [employeeId], references: [id])
+  extraTaskTypeId String
+  extraTaskType   ExtraTaskType @relation(fields: [extraTaskTypeId], references: [id])
+  // Only relevant for HOURLY_RATE tasks
+  hours           Decimal?
+  // Computed: bonusAmount (FIXED) or bonusAmount × hours (HOURLY)
+  amount          Int
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([periodId, employeeId, extraTaskTypeId])
+  @@index([periodId])
+  @@index([employeeId])
+  @@index([extraTaskTypeId])
+}
+
+// ─── Approvals & Audit ────────────────────────────────────────────────────────
 
 model PeriodApproval {
   id        String         @id @default(cuid())
