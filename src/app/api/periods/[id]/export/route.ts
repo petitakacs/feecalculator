@@ -95,7 +95,7 @@ export async function GET(
     } : undefined,
   }));
 
-  const buffer = exportPeriodToExcel(periodData, entriesData);
+  const buffer = await exportPeriodToExcel(periodData, entriesData);
 
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {

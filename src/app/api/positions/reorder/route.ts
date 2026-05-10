@@ -6,7 +6,7 @@ import { hasPermission } from "@/lib/permissions";
 import { z } from "zod";
 
 const ReorderSchema = z.object({
-  ids: z.array(z.string()).min(1),
+  ids: z.array(z.string().max(36)).min(1).max(200),
 });
 
 export async function POST(req: NextRequest) {

@@ -24,7 +24,9 @@ export async function GET(
         orderBy: [{ employee: { name: "asc" } }],
       },
       approvals: {
-        include: { user: true },
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } },
+        },
         orderBy: { createdAt: "desc" },
       },
     },

@@ -35,7 +35,11 @@ export async function GET() {
 const createUserSchema = z.object({
   name: z.string().min(2, "A névnek legalább 2 karakter kell"),
   email: z.string().email("Érvénytelen e-mail cím"),
-  password: z.string().min(6, "A jelszónak legalább 6 karakter kell"),
+  password: z.string()
+    .min(12, "A jelszónak legalább 12 karakter kell")
+    .regex(/[A-Z]/, "A jelszónak tartalmaznia kell legalább egy nagybetűt")
+    .regex(/[0-9]/, "A jelszónak tartalmaznia kell legalább egy számot")
+    .regex(/[^A-Za-z0-9]/, "A jelszónak tartalmaznia kell legalább egy speciális karaktert"),
   role: z.enum([
     "ADMIN",
     "BUSINESS_UNIT_LEAD",

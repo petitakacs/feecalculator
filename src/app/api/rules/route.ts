@@ -9,6 +9,9 @@ import { createAuditLog } from "@/lib/audit";
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(session.user.role, "rules:read")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const rules = await prisma.businessRule.findMany({
     orderBy: { effectiveFrom: "desc" },

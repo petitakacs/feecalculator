@@ -28,6 +28,9 @@ export async function POST(
   if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
     return NextResponse.json({ error: "employeeIds array is required" }, { status: 400 });
   }
+  if (employeeIds.length > 500) {
+    return NextResponse.json({ error: "Too many employees in one batch (max 500)" }, { status: 400 });
+  }
 
   // Get existing entries for this period (primary-position entries only)
   const existingEntries = await prisma.monthlyEmployeeEntry.findMany({

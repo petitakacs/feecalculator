@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { hasPermission } from "@/lib/permissions";
 import { formatPeriod } from "@/lib/format";
 
 export async function GET(
@@ -11,6 +12,9 @@ export async function GET(
   const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasPermission(session.user.role, "periods:read")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const period = await prisma.monthlyPeriod.findUnique({
     where: { id },

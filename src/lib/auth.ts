@@ -4,10 +4,12 @@ import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { Role } from "@/types";
 import { verifyTotp } from "@/lib/totp";
+import { decrypt } from "@/lib/crypto";
 
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
+    maxAge: 8 * 60 * 60, // 8 hours
   },
   pages: {
     signIn: "/login",
@@ -28,7 +30,9 @@ export const authOptions: NextAuthOptions = {
         if (credentials.tempToken && credentials.totpCode) {
           const tokenRecord = await prisma.twoFactorToken.findUnique({
             where: { token: credentials.tempToken },
-            include: { user: true },
+            include: {
+              user: { select: { id: true, email: true, name: true, role: true, active: true, twoFactorEnabled: true, twoFactorSecret: true, twoFactorBackupCodes: true } },
+            },
           });
 
           if (
@@ -45,18 +49,32 @@ export const authOptions: NextAuthOptions = {
           }
 
           const code = credentials.totpCode.replace(/\s/g, "");
-          const isValidTotp = verifyTotp(code, user.twoFactorSecret);
+
+          // Decrypt TOTP secret before verification
+          let secret: string;
+          try {
+            secret = decrypt(user.twoFactorSecret);
+          } catch {
+            return null;
+          }
+
+          const isValidTotp = verifyTotp(code, secret);
 
           if (!isValidTotp) {
-            // Check backup codes (plain text stored in JSON array)
+            // Check backup codes — each stored as bcrypt hash
             if (user.twoFactorBackupCodes) {
-              const backupCodes: string[] = JSON.parse(user.twoFactorBackupCodes);
-              const codeIndex = backupCodes.indexOf(code);
-              if (codeIndex === -1) return null;
-              backupCodes.splice(codeIndex, 1);
+              const hashedCodes: string[] = JSON.parse(user.twoFactorBackupCodes);
+              let matchedIndex = -1;
+              for (let i = 0; i < hashedCodes.length; i++) {
+                const matches = await compare(code, hashedCodes[i]);
+                if (matches) { matchedIndex = i; break; }
+              }
+              if (matchedIndex === -1) return null;
+              // Invalidate the used backup code
+              hashedCodes.splice(matchedIndex, 1);
               await prisma.user.update({
                 where: { id: user.id },
-                data: { twoFactorBackupCodes: JSON.stringify(backupCodes) },
+                data: { twoFactorBackupCodes: JSON.stringify(hashedCodes) },
               });
             } else {
               return null;
@@ -76,20 +94,17 @@ export const authOptions: NextAuthOptions = {
           };
         }
 
-        // Normal login: email + password
+        // Normal login: email + password (only for users without 2FA)
         if (!credentials.email || !credentials.password) return null;
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
+          select: { id: true, email: true, name: true, role: true, active: true, passwordHash: true, twoFactorEnabled: true },
         });
 
         if (!user || !user.active) return null;
 
-        const isPasswordValid = await compare(
-          credentials.password,
-          user.passwordHash
-        );
-
+        const isPasswordValid = await compare(credentials.password, user.passwordHash);
         if (!isPasswordValid) return null;
 
         // If 2FA is enabled, block here — client must use the pre-login API

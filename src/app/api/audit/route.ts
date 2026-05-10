@@ -23,7 +23,9 @@ export async function GET(req: NextRequest) {
       ...(entityId ? { entityId } : {}),
       ...(userId ? { userId } : {}),
     },
-    include: { user: true },
+    include: {
+      user: { select: { id: true, name: true, email: true, role: true } },
+    },
     orderBy: { createdAt: "desc" },
     take: limit,
   });

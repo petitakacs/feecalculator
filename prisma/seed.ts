@@ -1,14 +1,20 @@
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
 
+if (process.env.NODE_ENV === "production") {
+  console.error("ERROR: Seed must not run in production. Aborting.");
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("Seeding database...");
+  console.log("Seeding database (development/test only)...");
 
-  // Create users
-  const adminPassword = await hash("admin123", 12);
-  const managerPassword = await hash("manager123", 12);
+  // Passwords come from env vars to avoid hardcoded credentials in version control.
+  // Defaults are intentionally weak and only suitable for local development.
+  const adminPassword = await hash(process.env.SEED_ADMIN_PASSWORD ?? "ChangeMe!Admin1", 12);
+  const managerPassword = await hash(process.env.SEED_MANAGER_PASSWORD ?? "ChangeMe!Manager1", 12);
 
   const admin = await prisma.user.upsert({
     where: { email: "admin@cafe.com" },
@@ -38,7 +44,7 @@ async function main() {
     create: {
       name: "Business Lead",
       email: "lead@cafe.com",
-      passwordHash: await hash("lead123", 12),
+      passwordHash: await hash(process.env.SEED_LEAD_PASSWORD ?? "ChangeMe!Lead1", 12),
       role: "BUSINESS_UNIT_LEAD",
     },
   });
@@ -485,10 +491,8 @@ async function main() {
   });
 
   console.log("\nSeed completed successfully!");
-  console.log("\nLogin credentials:");
-  console.log("  Admin:    admin@cafe.com / admin123");
-  console.log("  Manager:  manager@cafe.com / manager123");
-  console.log("  BU Lead:  lead@cafe.com / lead123");
+  console.log("Users created: admin@cafe.com, manager@cafe.com, lead@cafe.com");
+  console.log("Use SEED_ADMIN_PASSWORD / SEED_MANAGER_PASSWORD / SEED_LEAD_PASSWORD env vars to set passwords.");
 }
 
 main()
