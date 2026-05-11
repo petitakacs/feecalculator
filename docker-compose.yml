@@ -57,7 +57,7 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: feecalculator_cloudflared
     restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate --protocol http2 run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - app
     networks:
@@ -69,3 +69,5 @@ volumes:
 networks:
   app_net:
     driver: bridge
+
+    cloudflared tunnel run --token eyJhIjoiZWVkM2Q1ODZhZjVkNTZkNDQ4ZTI0ZGQyMmU0NWIxZmQiLCJ0IjoiMDRjOTNhMWEtMjM0MC00MTA3LWIyZTctZTI0OWFiY2M3ZDc2IiwicyI6Ik9UbGxZMkkxTVRndE1qUmpaaTAwT0dSaExXRXlZV0l0WXpsbE5EUTVaR00xT1dKbSJ9

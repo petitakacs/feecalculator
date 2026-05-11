@@ -51,13 +51,13 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25",
+    "@types/node": "^25.7.0",
     "@types/nodemailer": "^8.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.5.0",
-    "eslint": "^10",
+    "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.6",
     "jest": "^30.4.1",
     "jest-environment-node": "^30.4.1",
@@ -66,6 +66,6 @@
     "tailwindcss": "^4.3.0",
     "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
-    "typescript": "^6"
+    "typescript": "^6.0.3"
   }
 }
