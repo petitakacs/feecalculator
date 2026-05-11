@@ -28,7 +28,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval'", // Next.js dev mode needs unsafe-eval; remove in prod builds
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Next.js/Turbopack injects inline scripts; nonce-based CSP would be the proper hardening
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:", // data: for QR codes
       "font-src 'self'",
