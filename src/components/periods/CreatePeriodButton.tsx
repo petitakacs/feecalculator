@@ -78,6 +78,7 @@ export function CreatePeriodButton({
           setOpen(true);
         }}
         className="px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-700 text-sm font-medium"
+        title={seasons.length === 0 ? "Először hozz létre egy szezont" : undefined}
       >
         + New Period
       </button>
@@ -112,6 +113,12 @@ export function CreatePeriodButton({
                 </div>
               </div>
 
+              {seasons.length === 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-700">
+                  Nincs aktív szezon. Először hozz létre egy szezont a Seasons oldalon.
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Season</label>
@@ -120,6 +127,7 @@ export function CreatePeriodButton({
                     onChange={(e) => setForm((f) => ({ ...f, seasonId: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                   >
+                    {seasons.length === 0 && <option value="">— Nincs aktív szezon —</option>}
                     {seasons.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}

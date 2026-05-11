@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { verifyTotp } from "@/lib/totp";
 import { decrypt } from "@/lib/crypto";
 import { hash } from "bcryptjs";
 import { randomBytes } from "crypto";
 
-export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+export async function POST(req: NextRequest) {
+  const session = await getAuthSession(req);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { totpCode } = await request.json();
+  const { totpCode } = await req.json();
   if (!totpCode) {
     return NextResponse.json({ error: "TOTP code required" }, { status: 400 });
   }

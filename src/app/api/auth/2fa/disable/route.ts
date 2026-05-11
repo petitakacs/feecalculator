@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
 
-export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+export async function POST(req: NextRequest) {
+  const session = await getAuthSession(req);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { password } = await request.json();
+  const { password } = await req.json();
   if (!password) {
     return NextResponse.json(
       { error: "Password confirmation required" },

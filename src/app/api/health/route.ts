@@ -1,14 +1,13 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   // Public minimal health check — no sensitive data
   try {
     await prisma.$queryRaw`SELECT 1`;
-    const session = await getServerSession(authOptions);
+    const session = await getAuthSession(req);
 
     if (!session) {
       return NextResponse.json({ ok: true, db: "connected" });
