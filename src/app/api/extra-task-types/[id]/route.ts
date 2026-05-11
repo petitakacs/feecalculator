@@ -21,7 +21,11 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
 
-  const type = await prisma.extraTaskType.update({ where: { id }, data: parsed.data });
+  const type = await prisma.extraTaskType.update({
+    where: { id },
+    data: parsed.data,
+    include: { _count: { select: { assignments: true } } },
+  });
   return NextResponse.json(type);
 }
 

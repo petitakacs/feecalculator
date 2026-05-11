@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
 
   const types = await prisma.extraTaskType.findMany({
     orderBy: { name: "asc" },
+    include: { _count: { select: { assignments: true } } },
   });
   return NextResponse.json(types);
 }
