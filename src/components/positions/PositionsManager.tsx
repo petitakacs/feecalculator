@@ -20,6 +20,7 @@ interface VariationRow {
   multiplierDelta: number;
   fixedHourlySZD: number | null;
   active: boolean;
+  locationRates: LocationRate[];
 }
 
 interface PositionRow {
@@ -118,6 +119,11 @@ export function PositionsManager({
   const [newLocRate, setNewLocRate] = useState({ locationId: "", fixedHourlySZD: null as number | null });
   const [savingLocRate, setSavingLocRate] = useState(false);
   const [deletingLocRate, setDeletingLocRate] = useState<string | null>(null);
+
+  const [addingVarLocRateFor, setAddingVarLocRateFor] = useState<string | null>(null);
+  const [newVarLocRate, setNewVarLocRate] = useState({ locationId: "", fixedHourlySZD: null as number | null });
+  const [savingVarLocRate, setSavingVarLocRate] = useState(false);
+  const [deletingVarLocRate, setDeletingVarLocRate] = useState<string | null>(null);
 
   const canWrite = hasPermission(userRole, "positions:write");
 
@@ -273,6 +279,59 @@ export function PositionsManager({
     finally { setDeletingLocRate(null); }
   };
 
+  const handleSaveVarLocRate = async (positionId: string, varId: string) => {
+    if (!newVarLocRate.locationId) { showToast("Válassz helyszínt", "error"); return; }
+    if (newVarLocRate.fixedHourlySZD == null) { showToast("Add meg a díjat", "error"); return; }
+    setSavingVarLocRate(true);
+    try {
+      const res = await fetch(`/api/positions/${positionId}/variations/${varId}/location-rates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locationId: newVarLocRate.locationId, fixedHourlySZD: newVarLocRate.fixedHourlySZD }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error ?? "Mentés sikertelen", "error"); return; }
+      setPositions((prev) => prev.map((p) => {
+        if (p.id !== positionId) return p;
+        return {
+          ...p,
+          variations: p.variations.map((v) => {
+            if (v.id !== varId) return v;
+            const existing = v.locationRates.find((r) => r.locationId === data.locationId);
+            const updated = existing
+              ? v.locationRates.map((r) => r.locationId === data.locationId ? data : r)
+              : [...v.locationRates, data];
+            return { ...v, locationRates: updated };
+          }),
+        };
+      }));
+      setAddingVarLocRateFor(null);
+      setNewVarLocRate({ locationId: "", fixedHourlySZD: null });
+      showToast("Variáció lokáció díj mentve", "success");
+    } catch { showToast("Hálózati hiba", "error"); }
+    finally { setSavingVarLocRate(false); }
+  };
+
+  const handleDeleteVarLocRate = async (positionId: string, varId: string, locationId: string) => {
+    if (!confirm("Biztosan törlöd ezt a lokáció-specifikus díjat?")) return;
+    setDeletingVarLocRate(locationId);
+    try {
+      const res = await fetch(`/api/positions/${positionId}/variations/${varId}/location-rates/${locationId}`, { method: "DELETE" });
+      if (!res.ok) { showToast("Törlés sikertelen", "error"); return; }
+      setPositions((prev) => prev.map((p) => {
+        if (p.id !== positionId) return p;
+        return {
+          ...p,
+          variations: p.variations.map((v) =>
+            v.id === varId ? { ...v, locationRates: v.locationRates.filter((r) => r.locationId !== locationId) } : v
+          ),
+        };
+      }));
+      showToast("Variáció lokáció díj törölve", "success");
+    } catch { showToast("Hálózati hiba", "error"); }
+    finally { setDeletingVarLocRate(null); }
+  };
+
   return (
     <div className="space-y-4">
       {canWrite && (
@@ -389,36 +448,123 @@ export function PositionsManager({
                   {isExpanded && (
                     <>
                       {pos.variations.map((v) => (
-                        <tr key={v.id} className={`border-b bg-indigo-50/40 ${v.active ? "" : "opacity-50"}`}>
-                          {canWrite && <td className="px-2 py-2" />}
-                          <td className="px-2 py-2" />
-                          <td className="px-4 py-2 pl-8 text-indigo-800 text-xs">
-                            <div className="flex items-center gap-2">
-                              <span className="w-1 h-1 rounded-full bg-indigo-400 flex-shrink-0" />
-                              <span className={v.active ? "font-medium" : "line-through text-gray-400"}>{v.name}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2 text-right">
-                            <VariationRateDisplay baseMultiplier={pos.multiplier} baseFixed={pos.fixedHourlySZD} delta={v.multiplierDelta} fixedHourlySZD={v.fixedHourlySZD} />
-                          </td>
-                          <td className="px-4 py-2" colSpan={2} />
-                          <td className="px-4 py-2 text-center">
-                            {canWrite && (
-                              <button onClick={() => handleToggleVariation(pos.id, v)} disabled={togglingVar === v.id}
-                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${v.active ? "bg-emerald-500" : "bg-gray-300"}`}>
-                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${v.active ? "translate-x-4.5" : "translate-x-0.5"}`} />
-                              </button>
-                            )}
-                          </td>
-                          {canWrite && (
-                            <td className="px-4 py-2 text-right">
-                              <button onClick={() => handleDeleteVariation(pos.id, v.id)} disabled={deletingVar === v.id}
-                                className="p-1 text-red-400 hover:text-red-600 disabled:opacity-40">
-                                <X size={13} />
-                              </button>
+                        <>
+                          <tr key={v.id} className={`border-b bg-indigo-50/40 ${v.active ? "" : "opacity-50"}`}>
+                            {canWrite && <td className="px-2 py-2" />}
+                            <td className="px-2 py-2" />
+                            <td className="px-4 py-2 pl-8 text-indigo-800 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="w-1 h-1 rounded-full bg-indigo-400 flex-shrink-0" />
+                                <span className={v.active ? "font-medium" : "line-through text-gray-400"}>{v.name}</span>
+                              </div>
                             </td>
+                            <td className="px-4 py-2 text-right">
+                              <VariationRateDisplay baseMultiplier={pos.multiplier} baseFixed={pos.fixedHourlySZD} delta={v.multiplierDelta} fixedHourlySZD={v.fixedHourlySZD} />
+                            </td>
+                            <td className="px-4 py-2" colSpan={2} />
+                            <td className="px-4 py-2 text-center">
+                              {canWrite && (
+                                <button onClick={() => handleToggleVariation(pos.id, v)} disabled={togglingVar === v.id}
+                                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${v.active ? "bg-emerald-500" : "bg-gray-300"}`}>
+                                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${v.active ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                                </button>
+                              )}
+                            </td>
+                            {canWrite && (
+                              <td className="px-4 py-2 text-right">
+                                <button onClick={() => handleDeleteVariation(pos.id, v.id)} disabled={deletingVar === v.id}
+                                  className="p-1 text-red-400 hover:text-red-600 disabled:opacity-40">
+                                  <X size={13} />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                          {(v.locationRates.length > 0 || canWrite) && (
+                            <tr key={`${v.id}-locrates`} className="border-b bg-indigo-50/20">
+                              {canWrite && <td className="px-2 py-1" />}
+                              <td className="px-2 py-1" />
+                              <td className="px-4 py-1.5 pl-12" colSpan={canWrite ? 6 : 5}>
+                                <div className="py-0.5">
+                                  <p className="text-xs font-medium text-indigo-500 mb-1">↳ Lokáció díjak ({v.name})</p>
+                                  {v.locationRates.length > 0 && (
+                                    <table className="w-full text-xs mb-1">
+                                      <tbody>
+                                        {v.locationRates.map((r) => (
+                                          <tr key={r.locationId} className="border-t border-indigo-100">
+                                            <td className="py-0.5 text-gray-700">{r.location.name}</td>
+                                            <td className="py-0.5 text-right">
+                                              <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-amber-50 text-amber-800 border border-amber-200">
+                                                {formatCurrency(r.fixedHourlySZD)}/óra
+                                              </span>
+                                            </td>
+                                            {canWrite && (
+                                              <td className="py-0.5 text-right w-8">
+                                                <button
+                                                  onClick={() => handleDeleteVarLocRate(pos.id, v.id, r.locationId)}
+                                                  disabled={deletingVarLocRate === r.locationId}
+                                                  className="p-1 text-red-400 hover:text-red-600 disabled:opacity-40"
+                                                >
+                                                  <X size={11} />
+                                                </button>
+                                              </td>
+                                            )}
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                  {canWrite && (
+                                    addingVarLocRateFor === v.id ? (
+                                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        <select
+                                          value={newVarLocRate.locationId}
+                                          onChange={(e) => setNewVarLocRate((x) => ({ ...x, locationId: e.target.value }))}
+                                          className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                        >
+                                          <option value="">Helyszín...</option>
+                                          {locations
+                                            .filter((loc) => !v.locationRates.some((r) => r.locationId === loc.id))
+                                            .map((loc) => (
+                                              <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                            ))}
+                                        </select>
+                                        <input
+                                          type="number"
+                                          step="10"
+                                          min="0"
+                                          placeholder="Ft/óra"
+                                          value={newVarLocRate.fixedHourlySZD ?? ""}
+                                          onChange={(e) => setNewVarLocRate((x) => ({ ...x, fixedHourlySZD: e.target.value ? parseInt(e.target.value) : null }))}
+                                          className="border border-gray-300 rounded px-2 py-1 text-xs w-24 text-right"
+                                        />
+                                        <button
+                                          onClick={() => handleSaveVarLocRate(pos.id, v.id)}
+                                          disabled={savingVarLocRate}
+                                          className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50"
+                                        >
+                                          Mentés
+                                        </button>
+                                        <button
+                                          onClick={() => { setAddingVarLocRateFor(null); setNewVarLocRate({ locationId: "", fixedHourlySZD: null }); }}
+                                          className="px-2 py-1 text-gray-500 hover:text-gray-700 text-xs"
+                                        >
+                                          Mégse
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => { setAddingVarLocRateFor(v.id); setNewVarLocRate({ locationId: "", fixedHourlySZD: null }); }}
+                                        className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 font-medium mt-0.5"
+                                      >
+                                        <Plus size={11} /> Lokáció díj hozzáadása
+                                      </button>
+                                    )
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </tr>
+                        </>
                       ))}
 
                       <tr className="border-b bg-orange-50/30">

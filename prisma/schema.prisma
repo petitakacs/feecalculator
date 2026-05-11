@@ -26,6 +26,7 @@ model Location {
   periods           MonthlyPeriod[]
   loanEntries       MonthlyEmployeeEntry[] @relation("WorkingLocation")
   positionRates     PositionLocationRate[]
+  variationRates    VariationLocationRate[]
 }
 
 // ─── Users & Auth ─────────────────────────────────────────────────────────────
@@ -100,7 +101,8 @@ model PositionVariation {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  employees Employee[]
+  employees     Employee[]
+  locationRates VariationLocationRate[]
 
   @@unique([positionId, name])
   @@index([positionId])
@@ -376,6 +378,21 @@ model ImportLog {
 }
 
 // ─── Position × Location rates ────────────────────────────────────────────────
+
+model VariationLocationRate {
+  id             String            @id @default(cuid())
+  variationId    String
+  locationId     String
+  fixedHourlySZD Int
+  variation      PositionVariation @relation(fields: [variationId], references: [id])
+  location       Location          @relation(fields: [locationId], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([variationId, locationId])
+  @@index([variationId])
+  @@index([locationId])
+}
 
 model PositionLocationRate {
   id             String   @id @default(cuid())

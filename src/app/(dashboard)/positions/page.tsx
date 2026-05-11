@@ -12,7 +12,12 @@ export default async function PositionsPage() {
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: {
         _count: { select: { employees: true } },
-        variations: { orderBy: { name: "asc" } },
+        variations: {
+          orderBy: { name: "asc" },
+          include: {
+            locationRates: { include: { location: { select: { id: true, name: true } } } },
+          },
+        },
         locationRates: { include: { location: { select: { id: true, name: true } } } },
       },
     }),
@@ -45,6 +50,12 @@ export default async function PositionsPage() {
             multiplierDelta: Number(v.multiplierDelta),
             fixedHourlySZD: v.fixedHourlySZD ?? null,
             active: v.active,
+            locationRates: v.locationRates.map((r) => ({
+              id: r.id,
+              locationId: r.locationId,
+              fixedHourlySZD: r.fixedHourlySZD,
+              location: r.location,
+            })),
           })),
           locationRates: p.locationRates.map((r) => ({
             id: r.id,

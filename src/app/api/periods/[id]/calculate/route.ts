@@ -69,23 +69,27 @@ export async function POST(
     seasonRules.map((r) => [r.positionId, Number(r.multiplier)])
   );
 
-  const locationRates = period.locationId
-    ? await prisma.positionLocationRate.findMany({
-        where: { locationId: period.locationId },
-      })
-    : [];
+  const [locationRates, variationLocationRates] = period.locationId
+    ? await Promise.all([
+        prisma.positionLocationRate.findMany({ where: { locationId: period.locationId } }),
+        prisma.variationLocationRate.findMany({ where: { locationId: period.locationId } }),
+      ])
+    : [[], []];
   const locationRateMap = new Map(locationRates.map((r) => [r.positionId, r.fixedHourlySZD]));
+  const variationLocationRateMap = new Map(variationLocationRates.map((r) => [r.variationId, r.fixedHourlySZD]));
 
   // Identify waiter entries (position multiplier = 1.0, or waiter position by name)
   const waiterEntries: WaiterEntry[] = [];
   const allEntries: PositionEntry[] = [];
 
   for (const entry of period.entries) {
-    // Resolve fixed hourly rate: variation > location-specific > position-global
-    const variationFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
+    // Resolve fixed hourly rate: variation+location > location (base position) > variation global > position global
+    const variationId = entry.employee?.variationId ?? null;
+    const variationLocationFixed = variationId ? (variationLocationRateMap.get(variationId) ?? null) : null;
     const locationFixed = locationRateMap.get(entry.positionId) ?? null;
+    const variationFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
     const positionFixed = entry.position.fixedHourlySZD ?? null;
-    const resolvedFixed = variationFixed ?? locationFixed ?? positionFixed;
+    const resolvedFixed = variationLocationFixed ?? locationFixed ?? variationFixed ?? positionFixed;
 
     // Multiplier path (used only when no fixed rate)
     const baseMultiplier = multiplierOverrideMap.get(entry.positionId) ??
