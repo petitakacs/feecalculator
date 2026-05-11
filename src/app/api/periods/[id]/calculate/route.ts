@@ -120,19 +120,39 @@ export async function POST(
       : undefined,
   };
 
-  // For sales-based modes, require at least one waiter entry with positive sales
-  const salesBasedMode = seasonParams.mode === "SALES_BASED" || seasonParams.mode === "SALES_BASED_WITH_LIMITS";
-  if (salesBasedMode && waiterEntries.length === 0) {
-    return NextResponse.json(
-      { error: "Nincs pincér eladás rögzítve. Add meg az egyéni pincér eladásokat (Pincér eladás oszlop) a számítás előtt." },
-      { status: 422 }
-    );
-  }
-  if (salesBasedMode && waiterEntries.every((w) => w.netSalesCents === 0)) {
-    return NextResponse.json(
-      { error: "Minden pincér eladás 0 Ft. Ellenőrizd a beírt eladási értékeket." },
-      { status: 422 }
-    );
+  const isFixedRateMode = period.calculationMode === "FIXED_RATE";
+
+  if (isFixedRateMode) {
+    // In FIXED_RATE mode every entry must have a fixed hourly rate on its position/variation
+    const missing = allEntries
+      .filter((e) => e.fixedHourlySZD == null)
+      .map((e) => {
+        const entry = period.entries.find((pe) => pe.id === e.entryId);
+        return entry?.employee?.name ?? e.employeeId;
+      });
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Rögzített óradíj mód: a következő dolgozók pozíciójához nincs fix SZD óradíj beállítva: ${missing.join(", ")}. Menj a Pozíciók oldalra és állítsd be a fix óradíjat.`,
+        },
+        { status: 422 }
+      );
+    }
+  } else {
+    // For sales-based modes, require at least one waiter entry with positive sales
+    const salesBasedMode = seasonParams.mode === "SALES_BASED" || seasonParams.mode === "SALES_BASED_WITH_LIMITS";
+    if (salesBasedMode && waiterEntries.length === 0) {
+      return NextResponse.json(
+        { error: "Nincs pincér eladás rögzítve. Add meg az egyéni pincér eladásokat (Pincér eladás oszlop) a számítás előtt." },
+        { status: 422 }
+      );
+    }
+    if (salesBasedMode && waiterEntries.every((w) => w.netSalesCents === 0)) {
+      return NextResponse.json(
+        { error: "Minden pincér eladás 0 Ft. Ellenőrizd a beírt eladási értékeket." },
+        { status: 422 }
+      );
+    }
   }
 
   const result = calculatePeriod(waiterEntries, allEntries, rules, seasonParams);

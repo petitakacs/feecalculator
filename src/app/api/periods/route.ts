@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
       collectedServiceCharge: parsed.data.collectedServiceCharge,
       distributableBalance,
       notes: parsed.data.notes,
+      calculationMode: parsed.data.calculationMode,
     },
     include: { season: true, location: true },
   });

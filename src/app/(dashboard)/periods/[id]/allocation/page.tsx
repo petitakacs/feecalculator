@@ -99,6 +99,11 @@ export default async function AllocationPage({
             {periodLabel}{period.location ? ` — ${period.location.name}` : ""} — Elosztási tábla
           </h1>
           <StatusBadge status={period.status} />
+          {period.calculationMode === "FIXED_RATE" && (
+            <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+              Fix óradíj
+            </span>
+          )}
         </div>
       </div>
 
@@ -116,6 +121,7 @@ export default async function AllocationPage({
           approvedDistributionTotal: period.approvedDistributionTotal,
           closingBalance: period.closingBalance,
           waiterReferenceHourlyRate: period.waiterReferenceHourlyRate ?? undefined,
+          calculationMode: period.calculationMode as "STANDARD" | "FIXED_RATE",
           seasonId: period.seasonId,
           season: {
             id: period.season.id,

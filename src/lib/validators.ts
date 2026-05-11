@@ -83,6 +83,7 @@ export const CreatePeriodSchema = z.object({
   openingBalance: z.number().int().default(0),
   collectedServiceCharge: z.number().int().min(0),
   notes: z.string().optional().nullable(),
+  calculationMode: z.enum(["STANDARD", "FIXED_RATE"]).default("STANDARD"),
 });
 
 export const UpdatePeriodSchema = z.object({

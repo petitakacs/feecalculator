@@ -37,6 +37,7 @@ export function CreatePeriodButton({
     openingBalance: 0,
     collectedServiceCharge: 0,
     notes: "",
+    calculationMode: "STANDARD" as "STANDARD" | "FIXED_RATE",
   });
 
   const handleCreate = async () => {
@@ -184,6 +185,23 @@ export function CreatePeriodButton({
                   onFocus={(e) => e.target.select()}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Számítási mód</label>
+                <select
+                  value={form.calculationMode}
+                  onChange={(e) => setForm((f) => ({ ...f, calculationMode: e.target.value as "STANDARD" | "FIXED_RATE" }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                >
+                  <option value="STANDARD">Standard (pincér eladás alapú)</option>
+                  <option value="FIXED_RATE">Rögzített óradíj (pozíciónkénti fix SZD)</option>
+                </select>
+                {form.calculationMode === "FIXED_RATE" && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Rögzített óradíj módban minden pozícióhoz be kell állítani a fix SZD óradíjat a Pozíciók oldalon.
+                  </p>
+                )}
               </div>
 
               <div>

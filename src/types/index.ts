@@ -134,6 +134,7 @@ export interface MonthlyPeriod {
   approvedDistributionTotal: number;
   closingBalance: number;
   waiterReferenceHourlyRate?: number;
+  calculationMode?: string;
   status: PeriodStatus;
   notes?: string;
   lockedAt?: string;

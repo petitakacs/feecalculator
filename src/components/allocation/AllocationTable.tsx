@@ -267,7 +267,10 @@ export function AllocationTable({
       const data = await res.json();
       setLastRefRate(data.waiterReferenceHourlyRateCents);
       setRefRateInput(String(data.waiterReferenceHourlyRateCents));
-      showToast(`Számítás kész. Ref díj: ${formatCurrency(data.waiterReferenceHourlyRateCents)}/óra`, "success");
+      const toastMsg = period.calculationMode === "FIXED_RATE"
+        ? `Számítás kész (fix óradíj mód). Összes: ${formatCurrency(data.targetDistributionTotalCents)}`
+        : `Számítás kész. Ref díj: ${formatCurrency(data.waiterReferenceHourlyRateCents)}/óra`;
+      showToast(toastMsg, "success");
       await refreshEntries();
     } catch {
       showToast("Hálózati hiba", "error");
@@ -1088,27 +1091,35 @@ export function AllocationTable({
               {calculating ? "Számítás..." : "Számítás"}
             </button>
 
-            {/* Reference rate override widget */}
-            <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3 ml-1">
-              <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Ref. pincér óradíj:</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={refRateInput !== "" ? formatInteger(refRateInput) : ""}
-                onChange={(e) => setRefRateInput(parseFormattedInteger(e.target.value))}
-                placeholder="Ft/óra"
-                className="w-24 text-right border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-              />
-              <span className="text-xs text-gray-500">Ft/óra</span>
-              <button
-                onClick={handleApplyRefRate}
-                disabled={applyingRefRate || !refRateInput}
-                className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-40 font-medium whitespace-nowrap"
-                title="Alkalmazza a referencia óradíjat minden bejegyzésre"
-              >
-                {applyingRefRate ? "..." : "Alkalmaz"}
-              </button>
-            </div>
+            {/* Reference rate widget — hidden in FIXED_RATE mode */}
+            {period.calculationMode !== "FIXED_RATE" ? (
+              <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3 ml-1">
+                <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Ref. pincér óradíj:</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={refRateInput !== "" ? formatInteger(refRateInput) : ""}
+                  onChange={(e) => setRefRateInput(parseFormattedInteger(e.target.value))}
+                  placeholder="Ft/óra"
+                  className="w-24 text-right border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+                <span className="text-xs text-gray-500">Ft/óra</span>
+                <button
+                  onClick={handleApplyRefRate}
+                  disabled={applyingRefRate || !refRateInput}
+                  className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-40 font-medium whitespace-nowrap"
+                  title="Alkalmazza a referencia óradíjat minden bejegyzésre"
+                >
+                  {applyingRefRate ? "..." : "Alkalmaz"}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3 ml-1">
+                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                  Fix óradíj mód — pozíciónkénti rögzített SZD óradíj
+                </span>
+              </div>
+            )}
           </>
         )}
 
