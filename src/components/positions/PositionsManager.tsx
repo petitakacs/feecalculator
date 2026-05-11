@@ -7,6 +7,13 @@ import { hasPermission } from "@/lib/permissions";
 import { formatCurrency } from "@/lib/format";
 import { ChevronRight, ChevronDown, Plus, X, GripVertical } from "lucide-react";
 
+interface LocationRate {
+  id: string;
+  locationId: string;
+  fixedHourlySZD: number;
+  location: { id: string; name: string };
+}
+
 interface VariationRow {
   id: string;
   name: string;
@@ -30,6 +37,7 @@ interface PositionRow {
   createdAt: string;
   updatedAt: string;
   variations: VariationRow[];
+  locationRates: LocationRate[];
 }
 
 const RateDisplay = ({ multiplier, fixedHourlySZD }: { multiplier: number; fixedHourlySZD: number | null }) => {
@@ -82,7 +90,15 @@ const VariationRateDisplay = ({
   );
 };
 
-export function PositionsManager({ positions: initial, userRole }: { positions: PositionRow[]; userRole: Role }) {
+export function PositionsManager({
+  positions: initial,
+  userRole,
+  locations,
+}: {
+  positions: PositionRow[];
+  userRole: Role;
+  locations: { id: string; name: string }[];
+}) {
   const [positions, setPositions] = useState(initial);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
@@ -97,6 +113,11 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
   const [newVar, setNewVar] = useState({ name: "", multiplierDelta: 0, fixedHourlySZD: null as number | null, useFixed: false });
   const [togglingVar, setTogglingVar] = useState<string | null>(null);
   const [deletingVar, setDeletingVar] = useState<string | null>(null);
+
+  const [addingLocRateFor, setAddingLocRateFor] = useState<string | null>(null);
+  const [newLocRate, setNewLocRate] = useState({ locationId: "", fixedHourlySZD: null as number | null });
+  const [savingLocRate, setSavingLocRate] = useState(false);
+  const [deletingLocRate, setDeletingLocRate] = useState<string | null>(null);
 
   const canWrite = hasPermission(userRole, "positions:write");
 
@@ -209,6 +230,47 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
       showToast("Változat törölve", "success");
     } catch { showToast("Hálózati hiba", "error"); }
     finally { setDeletingVar(null); }
+  };
+
+  // ── Location rate CRUD ────────────────────────────────────────────────────────
+
+  const handleSaveLocRate = async (positionId: string) => {
+    if (!newLocRate.locationId) { showToast("Válassz helyszínt", "error"); return; }
+    if (newLocRate.fixedHourlySZD == null) { showToast("Add meg a díjat", "error"); return; }
+    setSavingLocRate(true);
+    try {
+      const res = await fetch(`/api/positions/${positionId}/location-rates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locationId: newLocRate.locationId, fixedHourlySZD: newLocRate.fixedHourlySZD }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error ?? "Mentés sikertelen", "error"); return; }
+      setPositions((prev) => prev.map((p) => {
+        if (p.id !== positionId) return p;
+        const existing = p.locationRates.find((r) => r.locationId === data.locationId);
+        const updated = existing
+          ? p.locationRates.map((r) => r.locationId === data.locationId ? data : r)
+          : [...p.locationRates, data];
+        return { ...p, locationRates: updated };
+      }));
+      setAddingLocRateFor(null);
+      setNewLocRate({ locationId: "", fixedHourlySZD: null });
+      showToast("Lokáció díj mentve", "success");
+    } catch { showToast("Hálózati hiba", "error"); }
+    finally { setSavingLocRate(false); }
+  };
+
+  const handleDeleteLocRate = async (positionId: string, locationId: string) => {
+    if (!confirm("Biztosan törlöd ezt a lokáció-specifikus díjat?")) return;
+    setDeletingLocRate(locationId);
+    try {
+      const res = await fetch(`/api/positions/${positionId}/location-rates/${locationId}`, { method: "DELETE" });
+      if (!res.ok) { showToast("Törlés sikertelen", "error"); return; }
+      setPositions((prev) => prev.map((p) => p.id === positionId ? { ...p, locationRates: p.locationRates.filter((r) => r.locationId !== locationId) } : p));
+      showToast("Lokáció díj törölve", "success");
+    } catch { showToast("Hálózati hiba", "error"); }
+    finally { setDeletingLocRate(null); }
   };
 
   return (
@@ -358,6 +420,97 @@ export function PositionsManager({ positions: initial, userRole }: { positions: 
                           )}
                         </tr>
                       ))}
+
+                      <tr className="border-b bg-orange-50/30">
+                        {canWrite && <td className="px-2 py-2" />}
+                        <td className="px-2 py-2" />
+                        <td className="px-4 py-2 pl-8" colSpan={canWrite ? 6 : 5}>
+                          <div className="py-1">
+                            <p className="text-xs font-medium text-orange-700 mb-1.5">Lokáció-specifikus díjak</p>
+                            {pos.locationRates.length > 0 && (
+                              <table className="w-full text-xs mb-1.5">
+                                <thead>
+                                  <tr className="text-gray-500">
+                                    <th className="text-left pb-0.5 font-medium">Lokáció</th>
+                                    <th className="text-right pb-0.5 font-medium">Fix SZD óradíj</th>
+                                    {canWrite && <th className="w-8" />}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {pos.locationRates.map((r) => (
+                                    <tr key={r.locationId} className="border-t border-orange-100">
+                                      <td className="py-0.5 text-gray-700">{r.location.name}</td>
+                                      <td className="py-0.5 text-right">
+                                        <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-amber-50 text-amber-800 border border-amber-200">
+                                          {formatCurrency(r.fixedHourlySZD)}/óra
+                                        </span>
+                                      </td>
+                                      {canWrite && (
+                                        <td className="py-0.5 text-right">
+                                          <button
+                                            onClick={() => handleDeleteLocRate(pos.id, r.locationId)}
+                                            disabled={deletingLocRate === r.locationId}
+                                            className="p-1 text-red-400 hover:text-red-600 disabled:opacity-40"
+                                          >
+                                            <X size={11} />
+                                          </button>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                            {canWrite && (
+                              addingLocRateFor === pos.id ? (
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                  <select
+                                    value={newLocRate.locationId}
+                                    onChange={(e) => setNewLocRate((v) => ({ ...v, locationId: e.target.value }))}
+                                    className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400"
+                                  >
+                                    <option value="">Helyszín...</option>
+                                    {locations
+                                      .filter((loc) => !pos.locationRates.some((r) => r.locationId === loc.id))
+                                      .map((loc) => (
+                                        <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                      ))}
+                                  </select>
+                                  <input
+                                    type="number"
+                                    step="10"
+                                    min="0"
+                                    placeholder="Ft/óra"
+                                    value={newLocRate.fixedHourlySZD ?? ""}
+                                    onChange={(e) => setNewLocRate((v) => ({ ...v, fixedHourlySZD: e.target.value ? parseInt(e.target.value) : null }))}
+                                    className="border border-gray-300 rounded px-2 py-1 text-xs w-24 text-right"
+                                  />
+                                  <button
+                                    onClick={() => handleSaveLocRate(pos.id)}
+                                    disabled={savingLocRate}
+                                    className="px-2 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 disabled:opacity-50"
+                                  >
+                                    Mentés
+                                  </button>
+                                  <button
+                                    onClick={() => { setAddingLocRateFor(null); setNewLocRate({ locationId: "", fixedHourlySZD: null }); }}
+                                    className="px-2 py-1 text-gray-500 hover:text-gray-700 text-xs"
+                                  >
+                                    Mégse
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => { setAddingLocRateFor(pos.id); setNewLocRate({ locationId: "", fixedHourlySZD: null }); }}
+                                  className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-800 font-medium mt-1"
+                                >
+                                  <Plus size={12} /> Lokáció díj hozzáadása
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </td>
+                      </tr>
 
                       {canWrite && (
                         <tr className="border-b bg-indigo-50/20">

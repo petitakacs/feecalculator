@@ -7,13 +7,17 @@ export default async function PositionsPage() {
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
-  const positions = await prisma.position.findMany({
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    include: {
-      _count: { select: { employees: true } },
-      variations: { orderBy: { name: "asc" } },
-    },
-  });
+  const [positions, locations] = await Promise.all([
+    prisma.position.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      include: {
+        _count: { select: { employees: true } },
+        variations: { orderBy: { name: "asc" } },
+        locationRates: { include: { location: { select: { id: true, name: true } } } },
+      },
+    }),
+    prisma.location.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -42,8 +46,15 @@ export default async function PositionsPage() {
             fixedHourlySZD: v.fixedHourlySZD ?? null,
             active: v.active,
           })),
+          locationRates: p.locationRates.map((r) => ({
+            id: r.id,
+            locationId: r.locationId,
+            fixedHourlySZD: r.fixedHourlySZD,
+            location: r.location,
+          })),
         }))}
         userRole={session.user.role}
+        locations={locations.map((l) => ({ id: l.id, name: l.name }))}
       />
     </div>
   );
