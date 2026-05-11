@@ -25,6 +25,8 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     command: >
@@ -69,5 +71,3 @@ volumes:
 networks:
   app_net:
     driver: bridge
-
-    cloudflared tunnel run --token eyJhIjoiZWVkM2Q1ODZhZjVkNTZkNDQ4ZTI0ZGQyMmU0NWIxZmQiLCJ0IjoiMDRjOTNhMWEtMjM0MC00MTA3LWIyZTctZTI0OWFiY2M3ZDc2IiwicyI6Ik9UbGxZMkkxTVRndE1qUmpaaTAwT0dSaExXRXlZV0l0WXpsbE5EUTVaR00xT1dKbSJ9
