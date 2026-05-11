@@ -40,7 +40,7 @@ export default async function AnalyticsPage() {
   }
 
   // Map entries to AnalyticsRecord[]
-  const records: AnalyticsRecord[] = entries.map((entry) => {
+  const records: AnalyticsRecord[] = entries.map((entry: (typeof entries)[number]) => {
     const period = entry.period;
     const extraTasksTotal =
       extraTasksMap.get(`${entry.periodId}:${entry.employeeId}`) ?? 0;
