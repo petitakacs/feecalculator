@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Role } from "@/types";
 import { showToast } from "@/components/ui/toaster";
 import { hasPermission } from "@/lib/permissions";
@@ -361,9 +361,8 @@ export function PositionsManager({
               const isExpanded = expanded.has(pos.id);
               const isDragOver = dragOverId === pos.id && dragId !== pos.id;
               return (
-                <>
+                <React.Fragment key={pos.id}>
                   <tr
-                    key={pos.id}
                     draggable={canWrite}
                     onDragStart={() => setDragId(pos.id)}
                     onDragOver={(e) => { e.preventDefault(); setDragOverId(pos.id); }}
@@ -448,8 +447,8 @@ export function PositionsManager({
                   {isExpanded && (
                     <>
                       {pos.variations.map((v) => (
-                        <>
-                          <tr key={v.id} className={`border-b bg-indigo-50/40 ${v.active ? "" : "opacity-50"}`}>
+                        <React.Fragment key={v.id}>
+                          <tr className={`border-b bg-indigo-50/40 ${v.active ? "" : "opacity-50"}`}>
                             {canWrite && <td className="px-2 py-2" />}
                             <td className="px-2 py-2" />
                             <td className="px-4 py-2 pl-8 text-indigo-800 text-xs">
@@ -564,7 +563,7 @@ export function PositionsManager({
                               </td>
                             </tr>
                           )}
-                        </>
+                        </React.Fragment>
                       ))}
 
                       <tr className="border-b bg-orange-50/30">
@@ -709,7 +708,7 @@ export function PositionsManager({
                       )}
                     </>
                   )}
-                </>
+                </React.Fragment>
               );
             })}
           </tbody>
