@@ -107,6 +107,7 @@ export async function DELETE(
   // Delete in correct order due to relation constraints
   await prisma.auditLog.deleteMany({ where: { periodId: id } });
   await prisma.periodApproval.deleteMany({ where: { periodId: id } });
+  await prisma.monthlyExtraTask.deleteMany({ where: { periodId: id } });
   await prisma.monthlyEmployeeEntry.deleteMany({ where: { periodId: id } });
   await prisma.monthlyPeriod.delete({ where: { id } });
 
