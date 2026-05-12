@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, type ReactNode } from "react";
+import React, { useState, useCallback, useRef, type ReactNode } from "react";
 import {
   MonthlyPeriod,
   MonthlyEmployeeEntry,
@@ -16,6 +16,15 @@ import { ExportButton } from "@/components/allocation/ExportButton";
 import { ImportModal } from "@/components/allocation/ImportModal";
 import { hasPermission } from "@/lib/permissions";
 import { Plus, X, ArrowRightLeft, Trash2, BookmarkPlus, BookOpen } from "lucide-react";
+
+interface HistoryData {
+  prevMonth: Record<string, number>;
+  prevYearSameMonth: Record<string, number>;
+  prevYearAvg: Record<string, number>;
+  prevMonthLabel: string;
+  prevYearSameMonthLabel: string;
+  prevYearLabel: string;
+}
 
 interface AllocationTableProps {
   period: MonthlyPeriod;
@@ -35,6 +44,7 @@ interface RowValues {
   overtimePayment: string;
   manualCorrection: string;
   finalApprovedAmount: string;
+  targetNetHourlyServiceCharge: string;
   notes: string;
 }
 
@@ -42,8 +52,9 @@ interface RowValues {
 interface TaskTypeOption {
   id: string;
   name: string;
-  bonusType: "FIXED_AMOUNT" | "HOURLY_RATE";
+  bonusType: "FIXED_AMOUNT" | "HOURLY_RATE" | "MULTIPLIER_FULL_HOURLY" | "MULTIPLIER_SERVICE_CHARGE_HOURLY";
   bonusAmount: number;
+  rateMultiplier?: number | null;
   active?: boolean;
 }
 
@@ -56,6 +67,7 @@ function entryToRowValues(entry: MonthlyEmployeeEntry): RowValues {
     overtimePayment: String(entry.overtimePayment),
     manualCorrection: String(entry.manualCorrection),
     finalApprovedAmount: entry.finalApprovedAmount != null ? String(entry.finalApprovedAmount) : "",
+    targetNetHourlyServiceCharge: entry.targetNetHourlyServiceCharge != null ? String(entry.targetNetHourlyServiceCharge) : "",
     notes: entry.notes ?? "",
   };
 }
@@ -101,9 +113,19 @@ export function AllocationTable({
   const [addIsLoan, setAddIsLoan] = useState(false);
   const [addingOne, setAddingOne] = useState(false);
 
-  const [focusedInput, setFocusedInput] = useState<string | null>(null);
-  const [lastRefRate, setLastRefRate] = useState<number | null>(null);
+  const [lastRefRate, setLastRefRate] = useState<number | null>(
+    period.waiterReferenceHourlyRate ?? null
+  );
+  const [refRateInput, setRefRateInput] = useState<string>(
+    period.waiterReferenceHourlyRate != null ? String(period.waiterReferenceHourlyRate) : ""
+  );
+  const [applyingRefRate, setApplyingRefRate] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
+
+  // History toggle state
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyData, setHistoryData] = useState<HistoryData | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Template state
   const TEMPLATE_KEY = `sc_template_${period.locationId ?? "global"}`;
@@ -173,6 +195,12 @@ export function AllocationTable({
     if (vals.netWaiterSales !== "") {
       updateData.netWaiterSales = parseHUF(vals.netWaiterSales);
     }
+    if (vals.targetNetHourlyServiceCharge !== "") {
+      const manualHourlyRate = parseHUF(vals.targetNetHourlyServiceCharge);
+      updateData.targetNetHourlyServiceCharge = manualHourlyRate;
+      updateData.targetServiceChargeAmount = Math.round(manualHourlyRate * (parseFloat(vals.workedHours) || 0));
+      updateData.overrideFlag = true;
+    }
     if (vals.finalApprovedAmount !== "") {
       const approvedAmt = parseHUF(vals.finalApprovedAmount);
       updateData.finalApprovedAmount = approvedAmt;
@@ -182,6 +210,8 @@ export function AllocationTable({
         parseHUF(vals.overtimePayment) +
         parseHUF(vals.manualCorrection);
       if (approvedAmt !== computedTarget) updateData.overrideFlag = true;
+    } else if (entry.finalApprovedAmount != null) {
+      updateData.finalApprovedAmount = null;
     }
 
     try {
@@ -236,12 +266,43 @@ export function AllocationTable({
       }
       const data = await res.json();
       setLastRefRate(data.waiterReferenceHourlyRateCents);
-      showToast(`Számítás kész. Ref díj: ${formatCurrency(data.waiterReferenceHourlyRateCents)}/óra`, "success");
+      setRefRateInput(String(data.waiterReferenceHourlyRateCents));
+      const toastMsg = period.calculationMode === "FIXED_RATE"
+        ? `Számítás kész (fix óradíj mód). Összes: ${formatCurrency(data.targetDistributionTotalCents)}`
+        : `Számítás kész. Ref díj: ${formatCurrency(data.waiterReferenceHourlyRateCents)}/óra`;
+      showToast(toastMsg, "success");
       await refreshEntries();
     } catch {
       showToast("Hálózati hiba", "error");
     } finally {
       setCalculating(false);
+    }
+  };
+
+  const handleApplyRefRate = async () => {
+    const rateVal = Math.round(parseFloat(refRateInput) || 0);
+    if (rateVal <= 0) { showToast("Adj meg érvényes referencia óradíjat", "error"); return; }
+    setApplyingRefRate(true);
+    try {
+      const res = await fetch(`/api/periods/${period.id}/apply-ref-rate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refRateCents: rateVal }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast(err.error ?? "Alkalmazás sikertelen", "error");
+        return;
+      }
+      const data = await res.json();
+      setLastRefRate(data.waiterReferenceHourlyRate);
+      setRefRateInput(String(data.waiterReferenceHourlyRate));
+      showToast(`Referencia óradíj alkalmazva: ${formatCurrency(data.waiterReferenceHourlyRate)}/óra`, "success");
+      await refreshEntries();
+    } catch {
+      showToast("Hálózati hiba", "error");
+    } finally {
+      setApplyingRefRate(false);
     }
   };
 
@@ -358,7 +419,7 @@ export function AllocationTable({
         notes: taskNotes || null,
       };
       const chosen = taskTypes.find((t) => t.id === taskTypeId);
-      if (chosen?.bonusType === "HOURLY_RATE") {
+      if (chosen?.bonusType !== "FIXED_AMOUNT") {
         body.hours = parseFloat(taskHours) || 0;
       }
       const res = await fetch(`/api/periods/${period.id}/extra-tasks`, {
@@ -456,6 +517,47 @@ export function AllocationTable({
     }
   };
 
+  const handleResetHourlyRate = async (entry: MonthlyEmployeeEntry) => {
+    const calculatedValue = entry.calculatedTargetNetHourlyServiceCharge;
+    if (calculatedValue == null) return;
+    const targetServiceChargeAmount = Math.round(calculatedValue * Number(entry.workedHours));
+    try {
+      const res = await fetch(`/api/periods/${period.id}/entries`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: entry.id,
+          targetNetHourlyServiceCharge: calculatedValue,
+          targetServiceChargeAmount,
+          overrideFlag: false,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast(err.error ?? "Visszaállítás sikertelen", "error");
+        return;
+      }
+      const updated: MonthlyEmployeeEntry = await res.json();
+      setEntries((prev) => prev.map((e) => (e.id === entry.id ? updated : e)));
+      setRowValues((prev) => ({ ...prev, [entry.id]: entryToRowValues(updated) }));
+      showToast("Célóradíj visszaállítva", "success");
+    } catch {
+      showToast("Hálózati hiba", "error");
+    }
+  };
+
+  const handleToggleHistory = async () => {
+    if (showHistory) { setShowHistory(false); return; }
+    if (historyData) { setShowHistory(true); return; }
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/periods/${period.id}/history`);
+      if (res.ok) { setHistoryData(await res.json()); setShowHistory(true); }
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const handleSaveAll = async () => {
     const dirty = entries.filter((e) => dirtyRows.has(e.id));
     if (dirty.length === 0) {
@@ -473,6 +575,7 @@ export function AllocationTable({
 
   const MONEY_FIELDS: (keyof RowValues)[] = [
     "netWaiterSales", "bonus", "overtimePayment", "manualCorrection", "finalApprovedAmount",
+    "targetNetHourlyServiceCharge",
   ];
 
   const inputCell = (
@@ -484,11 +587,9 @@ export function AllocationTable({
   ) => {
     const raw = rowValues[entry.id]?.[field] ?? "";
     const isMoney = MONEY_FIELDS.includes(field);
-    const inputKey = `${entry.id}:${field}`;
-    const isFocused = focusedInput === inputKey;
 
     if (editable) {
-      const displayValue = isMoney && !isFocused && raw !== ""
+      const displayValue = isMoney && raw !== ""
         ? formatInteger(raw)
         : raw;
       return (
@@ -502,8 +603,7 @@ export function AllocationTable({
               : e.target.value;
             updateField(entry.id, field, val);
           }}
-          onFocus={() => isMoney && setFocusedInput(inputKey)}
-          onBlur={() => { setFocusedInput(null); handleBlurSave(entry); }}
+          onBlur={() => handleBlurSave(entry)}
           placeholder={placeholder}
           className={`${width} text-right border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white`}
         />
@@ -540,7 +640,7 @@ export function AllocationTable({
         .map(([positionName, entries]) => ({ positionName, entries }))
     : [{ positionName: "", entries }];
 
-  const TOTAL_COLS = editable ? 20 : 19;
+  const TOTAL_COLS = (editable ? 20 : 19) + (showHistory ? 3 : 0);
 
   const renderEntryRow = (entry: MonthlyEmployeeEntry) => {
     const isSaving = savingRows.has(entry.id);
@@ -564,10 +664,22 @@ export function AllocationTable({
       >
         {/* Name */}
         <td className="px-3 py-2 sticky left-0 bg-inherit z-10 border-r border-gray-100">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-medium text-xs">
               {entry.employee?.name ?? entry.employeeId}
             </span>
+            {entry.employee?.variation && (
+              <span
+                className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs"
+                title={
+                  entry.employee.variation.fixedHourlySZD != null
+                    ? `Fix óradíj: ${formatCurrency(entry.employee.variation.fixedHourlySZD)}/óra`
+                    : `Változat szorzó delta: ${entry.employee.variation.multiplierDelta >= 0 ? "+" : ""}${entry.employee.variation.multiplierDelta}x`
+                }
+              >
+                {entry.employee.variation.name}
+              </span>
+            )}
             {entry.entryLabel && (
               <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
                 {entry.entryLabel}
@@ -583,7 +695,34 @@ export function AllocationTable({
         </td>
         {!groupByPosition && (
           <td className="px-3 py-2 text-gray-500 border-r border-gray-100 text-xs">
-            {entry.position?.name ?? entry.positionId}
+            <div>{entry.position?.name ?? entry.positionId}</div>
+            {(() => {
+              const varFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
+              const posFixed = entry.position?.fixedHourlySZD ?? null;
+              const resolvedFixed = varFixed ?? posFixed;
+              if (resolvedFixed != null) {
+                return (
+                  <div className="mt-0.5">
+                    <span className="px-1 py-0.5 rounded text-[10px] font-mono bg-amber-50 text-amber-700 border border-amber-200"
+                      title={varFixed != null ? "Változat fix óradíj" : "Pozíció fix óradíj"}>
+                      Fix: {formatCurrency(resolvedFixed)}/óra
+                    </span>
+                  </div>
+                );
+              }
+              const base = Number(entry.position?.multiplier ?? 1);
+              const delta = entry.employee?.variation?.multiplierDelta != null
+                ? Number(entry.employee.variation.multiplierDelta) : 0;
+              const eff = base + delta;
+              return (
+                <div className="text-gray-400 font-mono mt-0.5">
+                  {delta !== 0
+                    ? <span title={`Alap: ${base.toFixed(2)}× ${delta >= 0 ? "+" : ""}${delta.toFixed(2)}×`}>{eff.toFixed(2)}×</span>
+                    : <span>{eff.toFixed(2)}×</span>
+                  }
+                </div>
+              );
+            })()}
           </td>
         )}
 
@@ -603,16 +742,58 @@ export function AllocationTable({
         </td>
 
         {/* Célértékek */}
-        <td className="px-3 py-1.5 text-right text-green-700 text-xs">
-          {entry.targetNetHourlyServiceCharge != null ? (() => {
-            const multiplier = entry.position?.multiplier ?? 1;
+        <td className="px-2 py-1.5 text-right text-green-700 text-xs">
+          {editable ? (
+            <div className="flex flex-col items-end gap-0.5">
+              {inputCell(entry, "targetNetHourlyServiceCharge", "w-20")}
+              {entry.overrideFlag &&
+                entry.calculatedTargetNetHourlyServiceCharge != null &&
+                entry.calculatedTargetNetHourlyServiceCharge !== entry.targetNetHourlyServiceCharge && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-green-600/70 text-[10px]">
+                    Eredeti: {formatInteger(entry.calculatedTargetNetHourlyServiceCharge)} Ft/óra
+                  </span>
+                  <button
+                    onClick={() => handleResetHourlyRate(entry)}
+                    className="text-green-600/70 hover:text-green-700 text-[10px] leading-none"
+                    title="Visszaállítás a számított értékre"
+                  >
+                    ↺
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : entry.targetNetHourlyServiceCharge != null ? (() => {
+            const varFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
+            const posFixed = entry.position?.fixedHourlySZD ?? null;
+            const resolvedFixed = varFixed ?? posFixed;
+            if (resolvedFixed != null) {
+              return (
+                <Tooltip lines={[
+                  <span key="f">Fix SZD óradíj{varFixed != null ? ` (változat)` : ""}: <b>{formatCurrency(resolvedFixed)}/óra</b></span>,
+                ]}>
+                  {formatCurrency(entry.targetNetHourlyServiceCharge)}
+                </Tooltip>
+              );
+            }
+            const baseMultiplier = Number(entry.position?.multiplier ?? 1);
+            const variationDelta = entry.employee?.variation?.multiplierDelta != null
+              ? Number(entry.employee.variation.multiplierDelta) : 0;
+            const multiplier = baseMultiplier + variationDelta;
             const refRate = multiplier !== 0
               ? Math.round(entry.targetNetHourlyServiceCharge / multiplier)
               : (lastRefRate ?? 0);
+            const multiplierLines = variationDelta !== 0
+              ? [
+                  <span key="mb">Alap szorzó: <b>{baseMultiplier.toFixed(2)}×</b></span>,
+                  <span key="mv">{entry.employee?.variation?.name}: <b>{variationDelta >= 0 ? "+" : ""}{variationDelta.toFixed(2)}×</b></span>,
+                  <span key="me">Szorzó: <b>{multiplier.toFixed(2)}×</b></span>,
+                ]
+              : [<span key="m">Szorzó: <b>{multiplier.toFixed(2)}×</b></span>];
             return (
               <Tooltip lines={[
                 <span key="r">Ref. óradíj: <b>{formatCurrency(refRate)}/óra</b></span>,
-                <span key="m">Szorzó: <b>{multiplier}×</b></span>,
+                ...multiplierLines,
                 <span key="eq" className="border-t border-gray-600 block mt-1 pt-1">= {formatCurrency(entry.targetNetHourlyServiceCharge)}/óra</span>,
               ]}>
                 {formatCurrency(entry.targetNetHourlyServiceCharge)}
@@ -624,14 +805,38 @@ export function AllocationTable({
           {entry.targetServiceChargeAmount != null ? (() => {
             const hourlyRate = entry.targetNetHourlyServiceCharge ?? 0;
             const hours = Number(entry.workedHours);
-            const multiplier = entry.position?.multiplier ?? 1;
+            const varFixed2 = entry.employee?.variation?.fixedHourlySZD ?? null;
+            const posFixed2 = entry.position?.fixedHourlySZD ?? null;
+            const resolvedFixed2 = varFixed2 ?? posFixed2;
+            if (resolvedFixed2 != null) {
+              return (
+                <Tooltip lines={[
+                  <span key="f">Fix SZD óradíj: <b>{formatCurrency(resolvedFixed2)}/óra</b></span>,
+                  <span key="eq" className="border-t border-gray-600 block mt-1 pt-1">{hours} óra × {formatCurrency(resolvedFixed2)}/óra</span>,
+                  <span key="res">= <b>{formatCurrency(entry.targetServiceChargeAmount)}</b></span>,
+                ]}>
+                  {formatCurrency(entry.targetServiceChargeAmount)}
+                </Tooltip>
+              );
+            }
+            const baseMultiplier = Number(entry.position?.multiplier ?? 1);
+            const variationDelta = entry.employee?.variation?.multiplierDelta != null
+              ? Number(entry.employee.variation.multiplierDelta) : 0;
+            const multiplier = baseMultiplier + variationDelta;
             const refRate = multiplier !== 0
               ? Math.round(hourlyRate / multiplier)
               : (lastRefRate ?? 0);
+            const multiplierLines = variationDelta !== 0
+              ? [
+                  <span key="mb">Alap szorzó: <b>{baseMultiplier.toFixed(2)}×</b></span>,
+                  <span key="mv">{entry.employee?.variation?.name}: <b>{variationDelta >= 0 ? "+" : ""}{variationDelta.toFixed(2)}×</b></span>,
+                  <span key="me">Szorzó: <b>{multiplier.toFixed(2)}×</b></span>,
+                ]
+              : [<span key="m">Szorzó: <b>{multiplier.toFixed(2)}×</b></span>];
             return (
               <Tooltip lines={[
                 <span key="r">Ref. óradíj: <b>{formatCurrency(refRate)}/óra</b></span>,
-                <span key="m">Szorzó: <b>{multiplier}×</b></span>,
+                ...multiplierLines,
                 <span key="h">Célóradíj: <b>{formatCurrency(hourlyRate)}/óra</b></span>,
                 <span key="eq" className="border-t border-gray-600 block mt-1 pt-1">{hours} óra × {formatCurrency(hourlyRate)}/óra</span>,
                 <span key="res">= <b>{formatCurrency(entry.targetServiceChargeAmount)}</b></span>,
@@ -654,6 +859,21 @@ export function AllocationTable({
         <td className="px-2 py-1.5 text-right bg-purple-50/30 border-r border-purple-100">
           {inputCell(entry, "finalApprovedAmount", "w-20", "number", "= cél")}
         </td>
+
+        {/* Előzmény */}
+        {showHistory && (
+          <>
+            <td className="px-3 py-1.5 text-right text-slate-600 text-xs bg-slate-50/50">
+              {historyData?.prevMonth[entry.employeeId] != null ? formatCurrency(historyData.prevMonth[entry.employeeId]) : <span className="text-gray-300">-</span>}
+            </td>
+            <td className="px-3 py-1.5 text-right text-slate-600 text-xs bg-slate-50/50">
+              {historyData?.prevYearSameMonth[entry.employeeId] != null ? formatCurrency(historyData.prevYearSameMonth[entry.employeeId]) : <span className="text-gray-300">-</span>}
+            </td>
+            <td className="px-3 py-1.5 text-right text-slate-600 text-xs bg-slate-50/50 border-r border-slate-100">
+              {historyData?.prevYearAvg[entry.employeeId] != null ? formatCurrency(historyData.prevYearAvg[entry.employeeId]) : <span className="text-gray-300">-</span>}
+            </td>
+          </>
+        )}
 
         {/* Extra feladatok */}
         <td className="px-2 py-1.5 text-right bg-teal-50/30">
@@ -763,7 +983,7 @@ export function AllocationTable({
   return (
     <div className="space-y-4">
       {/* Summary Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
           <div className="text-xs text-blue-600 font-medium uppercase tracking-wide">Felosztható egyenleg</div>
           <div className={`text-xl font-bold mt-1 ${period.distributableBalance < 0 ? "text-red-600" : "text-blue-700"}`}>
@@ -781,6 +1001,12 @@ export function AllocationTable({
         <div className={`${closingBalance < 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"} border rounded-lg px-4 py-3`}>
           <div className={`text-xs font-medium uppercase tracking-wide ${closingBalance < 0 ? "text-red-600" : "text-green-600"}`}>Várható záróegyenleg</div>
           <div className={`text-xl font-bold mt-1 ${closingBalance < 0 ? "text-red-700" : "text-green-700"}`}>{formatCurrency(closingBalance)}</div>
+        </div>
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
+          <div className="text-xs text-indigo-600 font-medium uppercase tracking-wide">Ref. pincér óradíj</div>
+          <div className="text-xl font-bold mt-1 text-indigo-700">
+            {lastRefRate != null ? `${formatCurrency(lastRefRate)}/óra` : <span className="text-gray-400 text-base font-normal">—</span>}
+          </div>
         </div>
       </div>
 
@@ -864,6 +1090,36 @@ export function AllocationTable({
             >
               {calculating ? "Számítás..." : "Számítás"}
             </button>
+
+            {/* Reference rate widget — hidden in FIXED_RATE mode */}
+            {period.calculationMode !== "FIXED_RATE" ? (
+              <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3 ml-1">
+                <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Ref. pincér óradíj:</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={refRateInput !== "" ? formatInteger(refRateInput) : ""}
+                  onChange={(e) => setRefRateInput(parseFormattedInteger(e.target.value))}
+                  placeholder="Ft/óra"
+                  className="w-24 text-right border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+                <span className="text-xs text-gray-500">Ft/óra</span>
+                <button
+                  onClick={handleApplyRefRate}
+                  disabled={applyingRefRate || !refRateInput}
+                  className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-40 font-medium whitespace-nowrap"
+                  title="Alkalmazza a referencia óradíjat minden bejegyzésre"
+                >
+                  {applyingRefRate ? "..." : "Alkalmaz"}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3 ml-1">
+                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                  Fix óradíj mód — pozíciónkénti rögzített SZD óradíj
+                </span>
+              </div>
+            )}
           </>
         )}
 
@@ -874,6 +1130,16 @@ export function AllocationTable({
           }`}
         >
           {groupByPosition ? "Csoportosítás: BE" : "Csoportosítás: KI"} (munkakör)
+        </button>
+
+        <button
+          onClick={handleToggleHistory}
+          disabled={loadingHistory}
+          className={`px-3 py-1.5 text-sm rounded-md border font-medium transition-colors disabled:opacity-50 ${
+            showHistory ? "bg-slate-700 text-white border-slate-700" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          {loadingHistory ? "Betöltés..." : showHistory ? "Előzmény: BE" : "Előzmény: KI"}
         </button>
 
         <div className="ml-auto flex items-center gap-2">
@@ -907,6 +1173,9 @@ export function AllocationTable({
               <th colSpan={2} className="px-3 py-1 text-center text-xs font-bold text-green-700 bg-green-100 border-b border-green-200">Célértékek</th>
               <th colSpan={3} className="px-3 py-1 text-center text-xs font-bold text-yellow-800 bg-yellow-100 border-b border-yellow-200">Kiegészítők</th>
               <th colSpan={2} className="px-3 py-1 text-center text-xs font-bold text-purple-700 bg-purple-100 border-b border-purple-200">Összesítés</th>
+              {showHistory && (
+                <th colSpan={3} className="px-3 py-1 text-center text-xs font-bold text-slate-700 bg-slate-100 border-b border-slate-200">Előzmény</th>
+              )}
               <th colSpan={1} className="px-3 py-1 text-center text-xs font-bold text-teal-700 bg-teal-100 border-b border-teal-200">Extra</th>
               <th colSpan={2} className="px-3 py-1 text-center text-xs font-bold text-orange-700 bg-orange-100 border-b border-orange-200">Kereset</th>
               <th rowSpan={2} className="px-3 py-2 text-left font-semibold text-gray-600 bg-gray-100 border-b border-gray-200">Megjegyzés</th>
@@ -926,6 +1195,20 @@ export function AllocationTable({
               <th className="px-3 py-1.5 text-right font-medium text-yellow-700 bg-yellow-50 border-b border-yellow-100 border-r border-yellow-100">Korrekció</th>
               <th className="px-3 py-1.5 text-right font-medium text-purple-600 bg-purple-50 border-b border-purple-100">Végső cél</th>
               <th className="px-3 py-1.5 text-right font-medium text-purple-600 bg-purple-50 border-b border-purple-100 border-r border-purple-100">Jóváhagyott</th>
+              {showHistory && historyData && (
+                <>
+                  <th className="px-3 py-1.5 text-right font-medium text-slate-600 bg-slate-50 border-b border-slate-200">{historyData.prevMonthLabel}</th>
+                  <th className="px-3 py-1.5 text-right font-medium text-slate-600 bg-slate-50 border-b border-slate-200">{historyData.prevYearSameMonthLabel}</th>
+                  <th className="px-3 py-1.5 text-right font-medium text-slate-600 bg-slate-50 border-b border-slate-200 border-r border-slate-200">Előző év átlag</th>
+                </>
+              )}
+              {showHistory && !historyData && (
+                <>
+                  <th className="px-3 py-1.5 bg-slate-50 border-b border-slate-200" />
+                  <th className="px-3 py-1.5 bg-slate-50 border-b border-slate-200" />
+                  <th className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 border-r border-slate-200" />
+                </>
+              )}
               <th className="px-3 py-1.5 text-right font-medium text-teal-600 bg-teal-50 border-b border-teal-100 border-r border-teal-100">Extra</th>
               <th className="px-3 py-1.5 text-right font-medium text-orange-600 bg-orange-50 border-b border-orange-100">Alapbér</th>
               <th className="px-3 py-1.5 text-right font-medium text-orange-700 bg-orange-50 border-b border-orange-100 border-r border-orange-100">Tényleges kereset</th>
@@ -941,9 +1224,9 @@ export function AllocationTable({
               </tr>
             ) : (
               groupedEntries.map((group) => (
-                <>
+                <React.Fragment key={group.positionName}>
                   {groupByPosition && (
-                    <tr key={`header-${group.positionName}`} className="bg-gray-800">
+                    <tr className="bg-gray-800">
                       <td colSpan={TOTAL_COLS - 1} className="px-4 py-2 text-sm font-bold text-white sticky left-0">
                         {group.positionName}
                         <span className="ml-2 text-gray-300 font-normal text-xs">{group.entries.length} fő</span>
@@ -952,7 +1235,7 @@ export function AllocationTable({
                   )}
                   {group.entries.map(renderEntryRow)}
                   {groupByPosition && renderGroupSubtotal(group)}
-                </>
+                </React.Fragment>
               ))
             )}
           </tbody>
@@ -1124,12 +1407,17 @@ export function AllocationTable({
                     <option value="">— Válassz —</option>
                     {taskTypes.filter((t) => t.active !== false).map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name} ({t.bonusType === "FIXED_AMOUNT" ? formatCurrency(t.bonusAmount) + "/hó" : formatCurrency(t.bonusAmount) + "/óra"})
+                        {t.name} ({
+                          t.bonusType === "FIXED_AMOUNT" ? formatCurrency(t.bonusAmount) + "/hó"
+                          : t.bonusType === "HOURLY_RATE" ? formatCurrency(t.bonusAmount) + "/óra"
+                          : t.bonusType === "MULTIPLIER_FULL_HOURLY" ? `${t.rateMultiplier}× teljes órabér`
+                          : `${t.rateMultiplier}× szervíz órabér`
+                        })
                       </option>
                     ))}
                   </select>
                 </div>
-                {chosenTaskType?.bonusType === "HOURLY_RATE" && (
+                {chosenTaskType && chosenTaskType.bonusType !== "FIXED_AMOUNT" && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Órák száma</label>
                     <input
@@ -1140,11 +1428,45 @@ export function AllocationTable({
                       step={0.5}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                     />
-                    {taskHours && chosenTaskType && (
-                      <p className="text-xs text-teal-700 mt-1">
-                        Összeg: {formatCurrency(Math.round(chosenTaskType.bonusAmount * (parseFloat(taskHours) || 0)))}
-                      </p>
-                    )}
+                    {taskHours && chosenTaskType && (() => {
+                      const h = parseFloat(taskHours) || 0;
+                      if (chosenTaskType.bonusType === "HOURLY_RATE") {
+                        return (
+                          <p className="text-xs text-teal-700 mt-1">
+                            Összeg: {formatCurrency(Math.round(chosenTaskType.bonusAmount * h))}
+                          </p>
+                        );
+                      }
+                      // Multiplier types: show preview using current entry data if available
+                      const empEntry = extraTaskModal
+                        ? entries.find((e) => e.employeeId === extraTaskModal.employeeId)
+                        : null;
+                      if (chosenTaskType.bonusType === "MULTIPLIER_FULL_HOURLY" && empEntry?.employee) {
+                        const emp = empEntry.employee;
+                        const hourlyRate = emp.baseSalaryType === "HOURLY"
+                          ? emp.baseSalaryAmount
+                          : Math.round(emp.baseSalaryAmount / 160);
+                        const mult = Number(chosenTaskType.rateMultiplier ?? 0);
+                        return (
+                          <p className="text-xs text-teal-700 mt-1">
+                            {mult}× × {formatCurrency(hourlyRate)}/óra × {h} h = {formatCurrency(Math.round(mult * hourlyRate * h))}
+                          </p>
+                        );
+                      }
+                      if (chosenTaskType.bonusType === "MULTIPLIER_SERVICE_CHARGE_HOURLY" && empEntry) {
+                        if (empEntry.targetNetHourlyServiceCharge == null) {
+                          return <p className="text-xs text-amber-600 mt-1">Kalkuláld le az időszakot először a szervízdíj órabér meghatározásához.</p>;
+                        }
+                        const mult = Number(chosenTaskType.rateMultiplier ?? 0);
+                        const rate = empEntry.targetNetHourlyServiceCharge;
+                        return (
+                          <p className="text-xs text-teal-700 mt-1">
+                            {mult}× × {formatCurrency(rate)}/óra × {h} h = {formatCurrency(Math.round(mult * rate * h))}
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 )}
                 <div>
@@ -1158,7 +1480,7 @@ export function AllocationTable({
                 </div>
                 <button
                   onClick={handleAddExtraTask}
-                  disabled={savingTask || !taskTypeId || (chosenTaskType?.bonusType === "HOURLY_RATE" && !taskHours)}
+                  disabled={savingTask || !taskTypeId || (chosenTaskType?.bonusType !== "FIXED_AMOUNT" && !taskHours)}
                   className="w-full px-4 py-2 bg-teal-600 text-white text-sm rounded-md hover:bg-teal-700 disabled:opacity-50 font-medium"
                 >
                   {savingTask ? "Mentés..." : "Hozzáadás"}

@@ -14,7 +14,10 @@ import {
   Calculator,
   MapPin,
   ListChecks,
+  UserCog,
+  TrendingUp,
 } from "lucide-react";
+import { Role } from "@/types";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -25,13 +28,18 @@ const navItems = [
   { href: "/locations", label: "Locations", icon: MapPin },
   { href: "/seasons", label: "Seasons", icon: Layers },
   { href: "/extra-task-types", label: "Extra Tasks", icon: ListChecks },
+  { href: "/analytics", label: "Analítika", icon: TrendingUp },
   { href: "/reports", label: "Reports", icon: BarChart2 },
   { href: "/audit", label: "Audit Log", icon: ClipboardList },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ userRole }: { userRole?: Role }) {
   const pathname = usePathname();
+  const allItems =
+    userRole === "ADMIN"
+      ? [...navItems, { href: "/users", label: "Users", icon: UserCog }]
+      : navItems;
 
   return (
     <div className="w-56 bg-gray-900 text-white flex flex-col">
@@ -41,7 +49,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 py-4">
-        {navItems.map((item) => {
+        {allItems.map((item) => {
           const Icon = item.icon;
           const isActive =
             pathname === item.href ||

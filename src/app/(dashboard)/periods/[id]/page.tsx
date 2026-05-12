@@ -43,6 +43,11 @@ export default async function PeriodDetailPage({
               {formatPeriod(period.month, period.year)}
             </h1>
             <StatusBadge status={period.status} />
+            {period.calculationMode === "FIXED_RATE" && (
+              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                Fix óradíj
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm text-gray-500">Season: {period.season.name}</p>
         </div>
@@ -110,6 +115,14 @@ export default async function PeriodDetailPage({
             <div className="flex justify-between">
               <dt className="text-gray-500">Season Mode</dt>
               <dd className="font-medium">{period.season.referenceMode}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Számítási mód</dt>
+              <dd className="font-medium">
+                {period.calculationMode === "FIXED_RATE"
+                  ? "Rögzített óradíj"
+                  : "Standard"}
+              </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-gray-500">Entries</dt>

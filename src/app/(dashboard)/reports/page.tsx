@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ReportsView } from "@/components/reports/ReportsView";
+import Link from "next/link";
 
 export default async function ReportsPage() {
   const session = await getServerSession(authOptions);
@@ -20,6 +21,14 @@ export default async function ReportsPage() {
         <p className="mt-1 text-sm text-gray-500">
           View and export service charge reports
         </p>
+      </div>
+      <div className="flex gap-3">
+        <Link
+          href="/reports/position-comparison"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+        >
+          Pozíció × Helyszín összehasonlítás
+        </Link>
       </div>
       <ReportsView
         periods={periods.map((p) => ({

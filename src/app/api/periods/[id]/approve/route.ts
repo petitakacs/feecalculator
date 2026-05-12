@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { ApprovalActionSchema } from "@/lib/validators";
 import { canTransitionStatus } from "@/lib/permissions";
 import { createAuditLog } from "@/lib/audit";
 import { PeriodStatus } from "@/types";
+import { formatPeriod } from "@/lib/format";
+import {
+  sendPeriodSubmitted,
+  sendPeriodApproved,
+  sendPeriodRejected,
+  sendPeriodClosed,
+  sendPeriodReopened,
+} from "@/lib/email";
 
 const actionToStatus: Record<string, PeriodStatus> = {
   SUBMITTED: "PENDING_APPROVAL",
@@ -20,7 +27,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const period = await prisma.monthlyPeriod.findUnique({ where: { id } });
@@ -75,9 +82,9 @@ export async function POST(
       closingBalance:
         parsed.data.action === "APPROVED" ? closingBalance : undefined,
       lockedAt:
-        newStatus === "CLOSED" ? new Date() : undefined,
+        newStatus === "CLOSED" ? new Date() : parsed.data.action === "REOPENED" ? null : undefined,
       lockedBy:
-        newStatus === "CLOSED" ? session.user.id : undefined,
+        newStatus === "CLOSED" ? session.user.id : parsed.data.action === "REOPENED" ? null : undefined,
     },
   });
 
@@ -99,6 +106,31 @@ export async function POST(
     before: { status: currentStatus },
     after: { status: newStatus },
   });
+
+  // Send email notifications (fire-and-forget; errors don't block the response)
+  try {
+    const [allUsers, actor] = await Promise.all([
+      prisma.user.findMany({ where: { active: true }, select: { email: true } }),
+      prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } }),
+    ]);
+    const recipients = allUsers.map((u) => u.email);
+    const ctx = {
+      periodId: id,
+      periodLabel: formatPeriod(period.month, period.year),
+      actorName: actor?.name ?? session.user.name,
+      comment: parsed.data.comment,
+    };
+    const notifyFn = {
+      SUBMITTED: sendPeriodSubmitted,
+      APPROVED: sendPeriodApproved,
+      REJECTED: sendPeriodRejected,
+      CLOSED: sendPeriodClosed,
+      REOPENED: sendPeriodReopened,
+    }[parsed.data.action];
+    if (notifyFn) notifyFn(recipients, ctx).catch(() => {});
+  } catch {
+    // don't block on notification errors
+  }
 
   return NextResponse.json({ success: true, newStatus });
 }

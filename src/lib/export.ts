@@ -1,131 +1,86 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { MonthlyEmployeeEntry, MonthlyPeriod } from "@/types";
 import { formatCurrency, formatHours, formatPeriod } from "@/lib/format";
 
-export function exportPeriodToExcel(
+export async function exportPeriodToExcel(
   period: MonthlyPeriod,
   entries: MonthlyEmployeeEntry[]
-): Buffer {
-  const wb = XLSX.utils.book_new();
+): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "FeeCalculator";
+  wb.created = new Date();
 
-  // Summary sheet
-  const summaryData = [
-    ["Café Service Charge Distribution"],
-    [
-      "Period:",
-      formatPeriod(period.month, period.year),
-      "Status:",
-      period.status,
-    ],
-    ["Opening Balance:", formatCurrency(period.openingBalance)],
-    ["Collected SC:", formatCurrency(period.collectedServiceCharge)],
-    ["Distributable Balance:", formatCurrency(period.distributableBalance)],
-    ["Target Distribution:", formatCurrency(period.targetDistributionTotal)],
-    [
-      "Approved Distribution:",
-      formatCurrency(period.approvedDistributionTotal),
-    ],
-    ["Closing Balance:", formatCurrency(period.closingBalance)],
-    [],
-  ];
-  const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
-  XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
+  // --- Summary sheet ---
+  const summaryWs = wb.addWorksheet("Summary");
+  summaryWs.addRow(["Café Service Charge Distribution"]);
+  summaryWs.addRow(["Period:", formatPeriod(period.month, period.year), "Status:", period.status]);
+  summaryWs.addRow(["Opening Balance:", formatCurrency(period.openingBalance)]);
+  summaryWs.addRow(["Collected SC:", formatCurrency(period.collectedServiceCharge)]);
+  summaryWs.addRow(["Distributable Balance:", formatCurrency(period.distributableBalance)]);
+  summaryWs.addRow(["Target Distribution:", formatCurrency(period.targetDistributionTotal)]);
+  summaryWs.addRow(["Approved Distribution:", formatCurrency(period.approvedDistributionTotal)]);
+  summaryWs.addRow(["Closing Balance:", formatCurrency(period.closingBalance)]);
 
-  // Allocation sheet
-  const headers = [
-    "Employee",
-    "Position",
-    "Hours",
-    "OT Hours",
-    "Waiter Sales",
-    "Gross SC",
-    "Net SC",
-    "Target Hourly",
-    "Target SC",
-    "Bonus",
-    "OT Payment",
-    "Correction",
-    "Final Target",
-    "Approved",
-    "Override",
-    "Notes",
+  // --- Allocation sheet ---
+  const ws = wb.addWorksheet("Allocation");
+
+  ws.columns = [
+    { header: "Employee",      key: "employee",      width: 25 },
+    { header: "Position",      key: "position",      width: 20 },
+    { header: "Hours",         key: "hours",         width: 8 },
+    { header: "OT Hours",      key: "otHours",       width: 8 },
+    { header: "Waiter Sales",  key: "waiterSales",   width: 14 },
+    { header: "Gross SC",      key: "grossSC",       width: 12 },
+    { header: "Net SC",        key: "netSC",         width: 12 },
+    { header: "Target Hourly", key: "targetHourly",  width: 14 },
+    { header: "Target SC",     key: "targetSC",      width: 12 },
+    { header: "Bonus",         key: "bonus",         width: 10 },
+    { header: "OT Payment",    key: "otPayment",     width: 12 },
+    { header: "Correction",    key: "correction",    width: 12 },
+    { header: "Final Target",  key: "finalTarget",   width: 14 },
+    { header: "Approved",      key: "approved",      width: 12 },
+    { header: "Override",      key: "override",      width: 8 },
+    { header: "Notes",         key: "notes",         width: 30 },
   ];
 
-  const rows = entries.map((entry) => [
-    entry.employee?.name ?? entry.employeeId,
-    entry.position?.name ?? entry.positionId,
-    formatHours(entry.workedHours),
-    formatHours(entry.overtimeHours),
-    entry.netWaiterSales != null ? formatCurrency(entry.netWaiterSales) : "-",
-    entry.calculatedGrossServiceCharge != null
-      ? formatCurrency(entry.calculatedGrossServiceCharge)
-      : "-",
-    entry.calculatedNetServiceCharge != null
-      ? formatCurrency(entry.calculatedNetServiceCharge)
-      : "-",
-    entry.targetNetHourlyServiceCharge != null
-      ? formatCurrency(entry.targetNetHourlyServiceCharge)
-      : "-",
-    entry.targetServiceChargeAmount != null
-      ? formatCurrency(entry.targetServiceChargeAmount)
-      : "-",
-    formatCurrency(entry.bonus),
-    formatCurrency(entry.overtimePayment),
-    formatCurrency(entry.manualCorrection),
-    entry.targetServiceChargeAmount != null
-      ? formatCurrency(
-          entry.targetServiceChargeAmount +
-            entry.bonus +
-            entry.overtimePayment +
-            entry.manualCorrection
-        )
-      : "-",
-    entry.finalApprovedAmount != null
-      ? formatCurrency(entry.finalApprovedAmount)
-      : "-",
-    entry.overrideFlag ? "YES" : "NO",
-    entry.notes ?? "",
-  ]);
+  // Style header row
+  ws.getRow(1).font = { bold: true };
+  ws.getRow(1).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFE5E7EB" },
+  };
 
-  const wsData = [headers, ...rows];
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  for (const entry of entries) {
+    const target = entry.targetServiceChargeAmount;
+    const row = ws.addRow({
+      employee:     entry.employee?.name ?? entry.employeeId,
+      position:     entry.position?.name ?? entry.positionId,
+      hours:        formatHours(entry.workedHours),
+      otHours:      formatHours(entry.overtimeHours),
+      waiterSales:  entry.netWaiterSales != null ? formatCurrency(entry.netWaiterSales) : "-",
+      grossSC:      entry.calculatedGrossServiceCharge != null ? formatCurrency(entry.calculatedGrossServiceCharge) : "-",
+      netSC:        entry.calculatedNetServiceCharge != null ? formatCurrency(entry.calculatedNetServiceCharge) : "-",
+      targetHourly: entry.targetNetHourlyServiceCharge != null ? formatCurrency(entry.targetNetHourlyServiceCharge) : "-",
+      targetSC:     target != null ? formatCurrency(target) : "-",
+      bonus:        formatCurrency(entry.bonus),
+      otPayment:    formatCurrency(entry.overtimePayment),
+      correction:   formatCurrency(entry.manualCorrection),
+      finalTarget:  target != null ? formatCurrency(target + entry.bonus + entry.overtimePayment + entry.manualCorrection) : "-",
+      approved:     entry.finalApprovedAmount != null ? formatCurrency(entry.finalApprovedAmount) : "-",
+      override:     entry.overrideFlag ? "YES" : "NO",
+      notes:        entry.notes ?? "",
+    });
 
-  // Color-code overridden rows in yellow
-  entries.forEach((entry, idx) => {
     if (entry.overrideFlag) {
-      const rowIdx = idx + 1; // +1 for header row (0-indexed)
-      for (let col = 0; col < headers.length; col++) {
-        const cellAddress = XLSX.utils.encode_cell({ r: rowIdx, c: col });
-        if (!ws[cellAddress]) continue;
-        if (!ws[cellAddress].s) ws[cellAddress].s = {};
-        ws[cellAddress].s.fill = {
-          fgColor: { rgb: "FFFF00" },
-        };
-      }
+      row.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFFFFF00" },
+      };
     }
-  });
+  }
 
-  // Set column widths
-  ws["!cols"] = [
-    { wch: 25 }, // Employee
-    { wch: 20 }, // Position
-    { wch: 8 }, // Hours
-    { wch: 8 }, // OT Hours
-    { wch: 14 }, // Waiter Sales
-    { wch: 12 }, // Gross SC
-    { wch: 12 }, // Net SC
-    { wch: 14 }, // Target Hourly
-    { wch: 12 }, // Target SC
-    { wch: 10 }, // Bonus
-    { wch: 12 }, // OT Payment
-    { wch: 12 }, // Correction
-    { wch: 14 }, // Final Target
-    { wch: 12 }, // Approved
-    { wch: 8 }, // Override
-    { wch: 30 }, // Notes
-  ];
-
-  XLSX.utils.book_append_sheet(wb, ws, "Allocation");
-
-  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf);
 }

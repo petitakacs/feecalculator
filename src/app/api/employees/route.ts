@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { CreateEmployeeSchema } from "@/lib/validators";
 import { hasPermission } from "@/lib/permissions";
 import { createAuditLog } from "@/lib/audit";
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
+export async function GET(req: NextRequest) {
+  const session = await getAuthSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "employees:read")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -15,14 +14,14 @@ export async function GET() {
 
   const employees = await prisma.employee.findMany({
     include: { position: true },
-    orderBy: { name: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
 
   return NextResponse.json(employees);
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "employees:write")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

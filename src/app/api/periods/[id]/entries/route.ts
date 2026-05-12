@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { UpdateEntrySchema } from "@/lib/validators";
 import { hasPermission } from "@/lib/permissions";
 import { createAuditLog } from "@/lib/audit";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const entries = await prisma.monthlyEmployeeEntry.findMany({
     where: { periodId: id },
-    include: { employee: { include: { position: true, location: true } }, position: true, workingLocation: true },
+    include: { employee: { include: { position: true, location: true, variation: true } }, position: true, workingLocation: true },
     orderBy: [{ employee: { name: "asc" } }, { position: { name: "asc" } }],
   });
 
@@ -28,7 +27,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "periods:write")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -107,7 +106,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "periods:write")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -133,10 +132,14 @@ export async function PATCH(
 
   const existing = await prisma.monthlyEmployeeEntry.findUnique({ where: { id: entryId } });
   if (!existing) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+  if (existing.periodId !== id) {
+    return NextResponse.json({ error: "Entry does not belong to this period" }, { status: 403 });
+  }
 
-  // Check if override flag should be set
+  // Set override when a non-null approved amount differs from the computed target,
+  // or when targetNetHourlyServiceCharge is manually provided (client already sends overrideFlag:true).
   const shouldSetOverride =
-    parsed.data.finalApprovedAmount !== undefined &&
+    parsed.data.finalApprovedAmount != null &&
     parsed.data.finalApprovedAmount !== existing.targetServiceChargeAmount;
 
   const updated = await prisma.monthlyEmployeeEntry.update({
@@ -145,7 +148,7 @@ export async function PATCH(
       ...parsed.data,
       overrideFlag: shouldSetOverride || parsed.data.overrideFlag || existing.overrideFlag,
     },
-    include: { employee: { include: { position: true, location: true } }, position: true, workingLocation: true },
+    include: { employee: { include: { position: true, location: true, variation: true } }, position: true, workingLocation: true },
   });
 
   await createAuditLog({

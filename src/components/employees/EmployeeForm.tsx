@@ -3,12 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Employee, Location, Position, Role } from "@/types";
+
+interface PositionWithVariations extends Position {
+  variations?: { id: string; name: string; multiplierDelta: number }[];
+}
 import { showToast } from "@/components/ui/toaster";
 import { hasPermission } from "@/lib/permissions";
 
 interface EmployeeFormProps {
-  employee: Partial<Employee> | null;
-  positions: Position[];
+  employee: Partial<Employee & { variationId?: string }> | null;
+  positions: PositionWithVariations[];
   locations: Location[];
   userRole: Role;
 }
@@ -22,6 +26,7 @@ export function EmployeeForm({ employee, positions, locations, userRole }: Emplo
   const [form, setForm] = useState({
     name: employee?.name ?? "",
     positionId: employee?.positionId ?? positions[0]?.id ?? "",
+    variationId: employee?.variationId ?? "",
     baseSalaryType: employee?.baseSalaryType ?? "MONTHLY" as const,
     baseSalaryAmount: (employee?.baseSalaryAmount ?? 0),
     eligibleForServiceCharge: employee?.eligibleForServiceCharge ?? true,
@@ -31,6 +36,9 @@ export function EmployeeForm({ employee, positions, locations, userRole }: Emplo
     notes: employee?.notes ?? "",
     active: employee?.active ?? true,
   });
+
+  const selectedPosition = positions.find((p) => p.id === form.positionId);
+  const availableVariations = selectedPosition?.variations ?? [];
 
   const set = (key: string, value: unknown) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -43,6 +51,7 @@ export function EmployeeForm({ employee, positions, locations, userRole }: Emplo
     const payload = {
       ...form,
       baseSalaryAmount: Math.round(form.baseSalaryAmount),
+      variationId: form.variationId || null,
       endDate: form.endDate || null,
       locationId: form.locationId || null,
       notes: form.notes || null,
@@ -94,11 +103,14 @@ export function EmployeeForm({ employee, positions, locations, userRole }: Emplo
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Position *</label>
+            <label className={labelClass}>Pozíció *</label>
             <select
               required
               value={form.positionId}
-              onChange={(e) => set("positionId", e.target.value)}
+              onChange={(e) => {
+                set("positionId", e.target.value);
+                set("variationId", "");
+              }}
               disabled={!canWrite}
               className={inputClass}
             >
@@ -107,20 +119,46 @@ export function EmployeeForm({ employee, positions, locations, userRole }: Emplo
               ))}
             </select>
           </div>
-
           <div>
-            <label className={labelClass}>Salary Type *</label>
+            <label className={labelClass}>Változat</label>
+            <select
+              value={form.variationId}
+              onChange={(e) => set("variationId", e.target.value)}
+              disabled={!canWrite || availableVariations.length === 0}
+              className={inputClass}
+            >
+              <option value="">— Alap (nincs változat) —</option>
+              {availableVariations.map((v) => {
+                const effective = (selectedPosition!.multiplier + v.multiplierDelta).toFixed(2);
+                const sign = v.multiplierDelta >= 0 ? "+" : "";
+                return (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({sign}{v.multiplierDelta.toFixed(2)}x → {effective}x)
+                  </option>
+                );
+              })}
+            </select>
+            {availableVariations.length === 0 && (
+              <p className="text-xs text-gray-400 mt-1">Ehhez a pozícióhoz nincs definiált változat</p>
+            )}
+          </div>
+        </div>
+
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Bérezés típusa *</label>
             <select
               value={form.baseSalaryType}
               onChange={(e) => set("baseSalaryType", e.target.value)}
               disabled={!canWrite}
               className={inputClass}
             >
-              <option value="HOURLY">Hourly</option>
-              <option value="MONTHLY">Monthly</option>
+              <option value="HOURLY">Órabér</option>
+              <option value="MONTHLY">Havi bér</option>
             </select>
           </div>
-        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>

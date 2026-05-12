@@ -18,6 +18,7 @@ export interface PositionEntry {
   employeeId: string;
   positionId: string;
   multiplier: number;
+  fixedHourlySZD?: number | null; // if set, overrides multiplier-based calculation
   workedHours: number;
   bonus: number; // cents
   overtimePayment: number; // cents
@@ -169,18 +170,13 @@ export function calculatePeriod(
   let totalDistribution = 0;
 
   for (const entry of allEntries) {
-    const positionHourlyRateCents = Math.round(
-      waiterReferenceHourlyRateCents * entry.multiplier
-    );
+    // Fixed hourly rate overrides multiplier-based calculation entirely
+    const positionHourlyRateCents = entry.fixedHourlySZD != null
+      ? entry.fixedHourlySZD
+      : Math.round(waiterReferenceHourlyRateCents * entry.multiplier);
 
-    const { targetSC, finalTarget } = calculateEmployeeTarget(
-      entry.workedHours,
-      waiterReferenceHourlyRateCents,
-      entry.multiplier,
-      entry.bonus,
-      entry.overtimePayment,
-      entry.manualCorrection
-    );
+    const targetSC = Math.round(entry.workedHours * positionHourlyRateCents);
+    const finalTarget = targetSC + entry.bonus + entry.overtimePayment + entry.manualCorrection;
 
     const waiterResult = waiterMap.get(entry.employeeId);
 

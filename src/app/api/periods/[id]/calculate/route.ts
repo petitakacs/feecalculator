@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/permissions";
 import { createAuditLog } from "@/lib/audit";
@@ -12,11 +11,11 @@ import {
 } from "@/lib/calculation-engine";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "periods:write")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -28,7 +27,7 @@ export async function POST(
       season: true,
       location: true,
       entries: {
-        include: { employee: { include: { position: true } }, position: true },
+        include: { employee: { include: { position: true, variation: true } }, position: true },
       },
     },
   });
@@ -70,20 +69,42 @@ export async function POST(
     seasonRules.map((r) => [r.positionId, Number(r.multiplier)])
   );
 
+  const [locationRates, variationLocationRates] = period.locationId
+    ? await Promise.all([
+        prisma.positionLocationRate.findMany({ where: { locationId: period.locationId } }),
+        prisma.variationLocationRate.findMany({ where: { locationId: period.locationId } }),
+      ])
+    : [[], []];
+  const locationRateMap = new Map(locationRates.map((r) => [r.positionId, r.fixedHourlySZD]));
+  const variationLocationRateMap = new Map(variationLocationRates.map((r) => [r.variationId, r.fixedHourlySZD]));
+
   // Identify waiter entries (position multiplier = 1.0, or waiter position by name)
   const waiterEntries: WaiterEntry[] = [];
   const allEntries: PositionEntry[] = [];
 
   for (const entry of period.entries) {
-    const positionMultiplier =
-      multiplierOverrideMap.get(entry.positionId) ??
+    // Resolve fixed hourly rate: variation+location > location (base position) > variation global > position global
+    const variationId = entry.employee?.variationId ?? null;
+    const variationLocationFixed = variationId ? (variationLocationRateMap.get(variationId) ?? null) : null;
+    const locationFixed = locationRateMap.get(entry.positionId) ?? null;
+    const variationFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
+    const positionFixed = entry.position.fixedHourlySZD ?? null;
+    const resolvedFixed = variationLocationFixed ?? locationFixed ?? variationFixed ?? positionFixed;
+
+    // Multiplier path (used only when no fixed rate)
+    const baseMultiplier = multiplierOverrideMap.get(entry.positionId) ??
       Number(entry.position.multiplier);
+    const variationDelta = entry.employee?.variation?.multiplierDelta != null
+      ? Number(entry.employee.variation.multiplierDelta)
+      : 0;
+    const positionMultiplier = baseMultiplier + variationDelta;
 
     allEntries.push({
       entryId: entry.id,
       employeeId: entry.employeeId,
       positionId: entry.positionId,
       multiplier: positionMultiplier,
+      fixedHourlySZD: resolvedFixed,
       workedHours: Number(entry.workedHours),
       bonus: entry.bonus,
       overtimePayment: entry.overtimePayment,
@@ -111,19 +132,39 @@ export async function POST(
       : undefined,
   };
 
-  // For sales-based modes, require at least one waiter entry with positive sales
-  const salesBasedMode = seasonParams.mode === "SALES_BASED" || seasonParams.mode === "SALES_BASED_WITH_LIMITS";
-  if (salesBasedMode && waiterEntries.length === 0) {
-    return NextResponse.json(
-      { error: "Nincs pincér eladás rögzítve. Add meg az egyéni pincér eladásokat (Pincér eladás oszlop) a számítás előtt." },
-      { status: 422 }
-    );
-  }
-  if (salesBasedMode && waiterEntries.every((w) => w.netSalesCents === 0)) {
-    return NextResponse.json(
-      { error: "Minden pincér eladás 0 Ft. Ellenőrizd a beírt eladási értékeket." },
-      { status: 422 }
-    );
+  const isFixedRateMode = period.calculationMode === "FIXED_RATE";
+
+  if (isFixedRateMode) {
+    // In FIXED_RATE mode every entry must have a fixed hourly rate on its position/variation
+    const missing = allEntries
+      .filter((e) => e.fixedHourlySZD == null)
+      .map((e) => {
+        const entry = period.entries.find((pe) => pe.id === e.entryId);
+        return entry?.employee?.name ?? e.employeeId;
+      });
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Rögzített óradíj mód: a következő dolgozók pozíciójához nincs fix SZD óradíj beállítva: ${missing.join(", ")}. Menj a Pozíciók oldalra és állítsd be a fix óradíjat.`,
+        },
+        { status: 422 }
+      );
+    }
+  } else {
+    // For sales-based modes, require at least one waiter entry with positive sales
+    const salesBasedMode = seasonParams.mode === "SALES_BASED" || seasonParams.mode === "SALES_BASED_WITH_LIMITS";
+    if (salesBasedMode && waiterEntries.length === 0) {
+      return NextResponse.json(
+        { error: "Nincs pincér eladás rögzítve. Add meg az egyéni pincér eladásokat (Pincér eladás oszlop) a számítás előtt." },
+        { status: 422 }
+      );
+    }
+    if (salesBasedMode && waiterEntries.every((w) => w.netSalesCents === 0)) {
+      return NextResponse.json(
+        { error: "Minden pincér eladás 0 Ft. Ellenőrizd a beírt eladási értékeket." },
+        { status: 422 }
+      );
+    }
   }
 
   const result = calculatePeriod(waiterEntries, allEntries, rules, seasonParams);
@@ -140,6 +181,7 @@ export async function POST(
           calculatedGrossServiceCharge: entryResult.calculatedGrossServiceChargeCents,
           calculatedNetServiceCharge: entryResult.calculatedNetServiceChargeCents,
           targetNetHourlyServiceCharge: entryResult.targetNetHourlyServiceChargeCents,
+          calculatedTargetNetHourlyServiceCharge: entryResult.targetNetHourlyServiceChargeCents,
           targetServiceChargeAmount: entryResult.targetServiceChargeAmountCents,
         },
       });
@@ -151,6 +193,7 @@ export async function POST(
     where: { id: id },
     data: {
       targetDistributionTotal: result.targetDistributionTotalCents,
+      waiterReferenceHourlyRate: result.waiterReferenceHourlyRateCents,
     },
   });
 

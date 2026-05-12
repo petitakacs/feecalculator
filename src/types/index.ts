@@ -23,7 +23,11 @@ export type ApprovalAction =
   | "REOPENED"
   | "CLOSED";
 
-export type ExtraBonusType = "FIXED_AMOUNT" | "HOURLY_RATE";
+export type ExtraBonusType =
+  | "FIXED_AMOUNT"
+  | "HOURLY_RATE"
+  | "MULTIPLIER_FULL_HOURLY"
+  | "MULTIPLIER_SERVICE_CHARGE_HOURLY";
 
 export interface Location {
   id: string;
@@ -49,21 +53,35 @@ export interface Position {
   id: string;
   name: string;
   multiplier: number;
+  fixedHourlySZD?: number | null;
   eligibleForServiceCharge: boolean;
   defaultOvertimeRule?: string;
   minHourlyServiceCharge?: number;
   maxHourlyServiceCharge?: number;
+  sortOrder?: number;
   active: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface PositionVariation {
+  id: string;
+  positionId: string;
+  name: string;
+  multiplierDelta: number;
+  fixedHourlySZD?: number | null;
+  active: boolean;
+}
+
 export interface Employee {
   id: string;
   name: string;
+  sortOrder?: number;
   active: boolean;
   positionId: string;
   position?: Position;
+  variationId?: string;
+  variation?: PositionVariation;
   baseSalaryType: SalaryType;
   baseSalaryAmount: number;
   eligibleForServiceCharge: boolean;
@@ -115,6 +133,8 @@ export interface MonthlyPeriod {
   targetDistributionTotal: number;
   approvedDistributionTotal: number;
   closingBalance: number;
+  waiterReferenceHourlyRate?: number;
+  calculationMode?: string;
   status: PeriodStatus;
   notes?: string;
   lockedAt?: string;
@@ -142,6 +162,7 @@ export interface MonthlyEmployeeEntry {
   calculatedGrossServiceCharge?: number;
   calculatedNetServiceCharge?: number;
   targetNetHourlyServiceCharge?: number;
+  calculatedTargetNetHourlyServiceCharge?: number;
   targetServiceChargeAmount?: number;
   bonus: number;
   overtimePayment: number;
@@ -161,6 +182,7 @@ export interface ExtraTaskType {
   description?: string;
   bonusType: ExtraBonusType;
   bonusAmount: number;
+  rateMultiplier?: number | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;

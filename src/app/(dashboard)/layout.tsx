@@ -30,7 +30,7 @@ export default async function DashboardLayout({
   return (
     <LocationFilterProvider locations={locationsData}>
       <div className="flex h-screen bg-gray-100">
-        <Sidebar />
+        <Sidebar userRole={session.user.role} />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header user={session.user} locations={locationsData} />
           <main className="flex-1 overflow-y-auto p-6">{children}</main>

@@ -12,8 +12,9 @@ export const UpdateLocationSchema = CreateLocationSchema.partial();
 export const CreateExtraTaskTypeSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional().nullable(),
-  bonusType: z.enum(["FIXED_AMOUNT", "HOURLY_RATE"]),
-  bonusAmount: z.number().int().min(0),
+  bonusType: z.enum(["FIXED_AMOUNT", "HOURLY_RATE", "MULTIPLIER_FULL_HOURLY", "MULTIPLIER_SERVICE_CHARGE_HOURLY"]),
+  bonusAmount: z.number().int().min(0).default(0),
+  rateMultiplier: z.number().positive().optional().nullable(),
   active: z.boolean().default(true),
 });
 
@@ -39,6 +40,7 @@ export const CreateEmployeeSchema = z.object({
     .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
     .optional()
     .nullable(),
+  variationId: z.string().optional().nullable(),
   locationId: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   active: z.boolean().default(true),
@@ -49,10 +51,12 @@ export const UpdateEmployeeSchema = CreateEmployeeSchema.partial();
 export const CreatePositionSchema = z.object({
   name: z.string().min(1, "Name is required"),
   multiplier: z.number().min(0),
+  fixedHourlySZD: z.number().int().min(0).optional().nullable(),
   eligibleForServiceCharge: z.boolean().default(true),
   defaultOvertimeRule: z.string().optional().nullable(),
   minHourlyServiceCharge: z.number().int().optional().nullable(),
   maxHourlyServiceCharge: z.number().int().optional().nullable(),
+  sortOrder: z.number().int().default(0),
   active: z.boolean().default(true),
 });
 
@@ -79,6 +83,7 @@ export const CreatePeriodSchema = z.object({
   openingBalance: z.number().int().default(0),
   collectedServiceCharge: z.number().int().min(0),
   notes: z.string().optional().nullable(),
+  calculationMode: z.enum(["STANDARD", "FIXED_RATE"]).default("STANDARD"),
 });
 
 export const UpdatePeriodSchema = z.object({
@@ -97,6 +102,8 @@ export const UpdateEntrySchema = z.object({
   manualCorrection: z.number().int().optional(),
   manualCorrectionReason: z.string().optional().nullable(),
   finalApprovedAmount: z.number().int().optional().nullable(),
+  targetNetHourlyServiceCharge: z.number().int().optional().nullable(),
+  targetServiceChargeAmount: z.number().int().optional().nullable(),
   notes: z.string().optional().nullable(),
   overrideFlag: z.boolean().optional(),
   overrideReason: z.string().optional().nullable(),

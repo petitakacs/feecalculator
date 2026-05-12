@@ -13,6 +13,7 @@ interface TaskTypeWithCount {
   description?: string;
   bonusType: ExtraBonusType;
   bonusAmount: number;
+  rateMultiplier?: number | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -29,6 +30,7 @@ const emptyForm = {
   description: "",
   bonusType: "FIXED_AMOUNT" as ExtraBonusType,
   bonusAmount: 0,
+  rateMultiplier: 1,
   active: true,
 };
 
@@ -47,14 +49,20 @@ export function ExtraTaskTypesManager({ initialTypes, userRole }: ExtraTaskTypes
   const handleSave = async () => {
     setLoading(true);
     try {
+      const isMultiplierType =
+        form.bonusType === "MULTIPLIER_FULL_HOURLY" ||
+        form.bonusType === "MULTIPLIER_SERVICE_CHARGE_HOURLY";
       const url = editId ? `/api/extra-task-types/${editId}` : "/api/extra-task-types";
       const res = await fetch(url, {
         method: editId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...form,
-          bonusAmount: Math.round(form.bonusAmount),
+          name: form.name,
           description: form.description || null,
+          bonusType: form.bonusType,
+          bonusAmount: isMultiplierType ? 0 : Math.round(form.bonusAmount),
+          rateMultiplier: isMultiplierType ? form.rateMultiplier : null,
+          active: form.active,
         }),
       });
       const data = await res.json();
@@ -87,7 +95,14 @@ export function ExtraTaskTypesManager({ initialTypes, userRole }: ExtraTaskTypes
 
   const startEdit = (t: TaskTypeWithCount) => {
     setEditId(t.id);
-    setForm({ name: t.name, description: t.description ?? "", bonusType: t.bonusType, bonusAmount: t.bonusAmount, active: t.active });
+    setForm({
+      name: t.name,
+      description: t.description ?? "",
+      bonusType: t.bonusType,
+      bonusAmount: t.bonusAmount,
+      rateMultiplier: t.rateMultiplier ?? 1,
+      active: t.active,
+    });
   };
 
   const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-400";
@@ -129,21 +144,44 @@ export function ExtraTaskTypesManager({ initialTypes, userRole }: ExtraTaskTypes
               >
                 <option value="FIXED_AMOUNT">Fix összeg (Ft/hó)</option>
                 <option value="HOURLY_RATE">Órabér (Ft/óra)</option>
+                <option value="MULTIPLIER_FULL_HOURLY">Teljes órabér szorzója</option>
+                <option value="MULTIPLIER_SERVICE_CHARGE_HOURLY">Szervíz órabér szorzója</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Összeg (Ft{form.bonusType === "HOURLY_RATE" ? "/óra" : "/hó"}) *
-              </label>
-              <input
-                type="number"
-                value={form.bonusAmount}
-                onChange={(e) => setForm((f) => ({ ...f, bonusAmount: parseFloat(e.target.value) || 0 }))}
-                className={inputClass}
-                min={0}
-                step={1}
-              />
-            </div>
+            {(form.bonusType === "FIXED_AMOUNT" || form.bonusType === "HOURLY_RATE") ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Összeg (Ft{form.bonusType === "HOURLY_RATE" ? "/óra" : "/hó"}) *
+                </label>
+                <input
+                  type="number"
+                  value={form.bonusAmount}
+                  onChange={(e) => setForm((f) => ({ ...f, bonusAmount: parseFloat(e.target.value) || 0 }))}
+                  className={inputClass}
+                  min={0}
+                  step={1}
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Szorzó (×) *
+                </label>
+                <input
+                  type="number"
+                  value={form.rateMultiplier}
+                  onChange={(e) => setForm((f) => ({ ...f, rateMultiplier: parseFloat(e.target.value) || 0 }))}
+                  className={inputClass}
+                  min={0}
+                  step={0.1}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {form.bonusType === "MULTIPLIER_FULL_HOURLY"
+                    ? "Pl. 1.5 = az órabér 150%-a × ledolgozott órák"
+                    : "Pl. 0.5 = a szervízdíj órabér 50%-a × ledolgozott órák"}
+                </p>
+              </div>
+            )}
           </div>
           <div className="flex gap-3 mt-4 items-center">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -157,7 +195,11 @@ export function ExtraTaskTypesManager({ initialTypes, userRole }: ExtraTaskTypes
             </label>
             <button
               onClick={handleSave}
-              disabled={loading || !form.name || form.bonusAmount <= 0}
+              disabled={loading || !form.name || (
+                (form.bonusType === "FIXED_AMOUNT" || form.bonusType === "HOURLY_RATE")
+                  ? form.bonusAmount <= 0
+                  : !form.rateMultiplier || form.rateMultiplier <= 0
+              )}
               className="px-4 py-2 bg-gray-900 text-white rounded-md text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
             >
               {loading ? "Mentés..." : editId ? "Frissítés" : "Létrehozás"}
@@ -193,12 +235,24 @@ export function ExtraTaskTypesManager({ initialTypes, userRole }: ExtraTaskTypes
                 <td className="px-6 py-4 font-medium">{t.name}</td>
                 <td className="px-6 py-4 text-gray-500">{t.description ?? "—"}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${t.bonusType === "FIXED_AMOUNT" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"}`}>
-                    {t.bonusType === "FIXED_AMOUNT" ? "Fix" : "Órabér"}
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    t.bonusType === "FIXED_AMOUNT" ? "bg-blue-100 text-blue-800"
+                    : t.bonusType === "HOURLY_RATE" ? "bg-orange-100 text-orange-800"
+                    : t.bonusType === "MULTIPLIER_FULL_HOURLY" ? "bg-purple-100 text-purple-800"
+                    : "bg-teal-100 text-teal-800"
+                  }`}>
+                    {t.bonusType === "FIXED_AMOUNT" ? "Fix"
+                      : t.bonusType === "HOURLY_RATE" ? "Órabér"
+                      : t.bonusType === "MULTIPLIER_FULL_HOURLY" ? "Teljes órabér ×"
+                      : "Szervíz órabér ×"}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right font-medium">
-                  {formatCurrency(t.bonusAmount)}{t.bonusType === "HOURLY_RATE" ? "/óra" : "/hó"}
+                  {t.bonusType === "FIXED_AMOUNT"
+                    ? `${formatCurrency(t.bonusAmount)}/hó`
+                    : t.bonusType === "HOURLY_RATE"
+                    ? `${formatCurrency(t.bonusAmount)}/óra`
+                    : `${t.rateMultiplier}×`}
                 </td>
                 <td className="px-6 py-4 text-center text-gray-600">{t._count.assignments}</td>
                 <td className="px-6 py-4 text-center">

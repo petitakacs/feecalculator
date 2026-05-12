@@ -24,7 +24,7 @@ export default async function AllocationPage({
         location: true,
         entries: {
           include: {
-            employee: { include: { position: true, location: true } },
+            employee: { include: { position: true, location: true, variation: true } },
             position: true,
             workingLocation: true,
           },
@@ -68,7 +68,9 @@ export default async function AllocationPage({
       id: emp.position.id,
       name: emp.position.name,
       multiplier: Number(emp.position.multiplier),
+      fixedHourlySZD: emp.position.fixedHourlySZD ?? undefined,
       eligibleForServiceCharge: emp.position.eligibleForServiceCharge,
+      sortOrder: emp.position.sortOrder,
       active: emp.position.active,
       createdAt: emp.position.createdAt.toISOString(),
       updatedAt: emp.position.updatedAt.toISOString(),
@@ -97,6 +99,11 @@ export default async function AllocationPage({
             {periodLabel}{period.location ? ` — ${period.location.name}` : ""} — Elosztási tábla
           </h1>
           <StatusBadge status={period.status} />
+          {period.calculationMode === "FIXED_RATE" && (
+            <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+              Fix óradíj
+            </span>
+          )}
         </div>
       </div>
 
@@ -113,6 +120,8 @@ export default async function AllocationPage({
           targetDistributionTotal: period.targetDistributionTotal,
           approvedDistributionTotal: period.approvedDistributionTotal,
           closingBalance: period.closingBalance,
+          waiterReferenceHourlyRate: period.waiterReferenceHourlyRate ?? undefined,
+          calculationMode: period.calculationMode as "STANDARD" | "FIXED_RATE",
           seasonId: period.seasonId,
           season: {
             id: period.season.id,
@@ -149,6 +158,7 @@ export default async function AllocationPage({
           calculatedGrossServiceCharge: e.calculatedGrossServiceCharge ?? undefined,
           calculatedNetServiceCharge: e.calculatedNetServiceCharge ?? undefined,
           targetNetHourlyServiceCharge: e.targetNetHourlyServiceCharge ?? undefined,
+          calculatedTargetNetHourlyServiceCharge: e.calculatedTargetNetHourlyServiceCharge ?? undefined,
           targetServiceChargeAmount: e.targetServiceChargeAmount ?? undefined,
           bonus: e.bonus,
           overtimePayment: e.overtimePayment,
@@ -160,12 +170,24 @@ export default async function AllocationPage({
           overrideReason: e.overrideReason ?? undefined,
           createdAt: e.createdAt.toISOString(),
           updatedAt: e.updatedAt.toISOString(),
-          employee: e.employee ? mapEmployee(e.employee as typeof employees[0]) : undefined,
+          employee: e.employee ? {
+            ...mapEmployee(e.employee as typeof employees[0]),
+            variation: e.employee.variation ? {
+              id: e.employee.variation.id,
+              positionId: e.employee.variation.positionId,
+              name: e.employee.variation.name,
+              multiplierDelta: Number(e.employee.variation.multiplierDelta),
+              fixedHourlySZD: e.employee.variation.fixedHourlySZD ?? null,
+              active: e.employee.variation.active,
+            } : undefined,
+          } : undefined,
           position: e.position ? {
             id: e.position.id,
             name: e.position.name,
             multiplier: Number(e.position.multiplier),
+            fixedHourlySZD: e.position.fixedHourlySZD ?? null,
             eligibleForServiceCharge: e.position.eligibleForServiceCharge,
+            sortOrder: e.position.sortOrder,
             active: e.position.active,
             createdAt: e.position.createdAt.toISOString(),
             updatedAt: e.position.updatedAt.toISOString(),
@@ -176,7 +198,9 @@ export default async function AllocationPage({
           id: p.id,
           name: p.name,
           multiplier: Number(p.multiplier),
+          fixedHourlySZD: p.fixedHourlySZD ?? undefined,
           eligibleForServiceCharge: p.eligibleForServiceCharge,
+          sortOrder: p.sortOrder,
           active: p.active,
           createdAt: p.createdAt.toISOString(),
           updatedAt: p.updatedAt.toISOString(),

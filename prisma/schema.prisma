@@ -25,21 +25,39 @@ model Location {
   employees         Employee[]
   periods           MonthlyPeriod[]
   loanEntries       MonthlyEmployeeEntry[] @relation("WorkingLocation")
+  positionRates     PositionLocationRate[]
+  variationRates    VariationLocationRate[]
 }
 
 // ─── Users & Auth ─────────────────────────────────────────────────────────────
 
 model User {
-  id           String           @id @default(cuid())
-  name         String
-  email        String           @unique
-  passwordHash String
-  role         Role             @default(STORE_MANAGER)
-  active       Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  auditLogs    AuditLog[]
-  approvals    PeriodApproval[]
+  id                   String           @id @default(cuid())
+  name                 String
+  email                String           @unique
+  passwordHash         String
+  role                 Role             @default(STORE_MANAGER)
+  active               Boolean          @default(true)
+  twoFactorEnabled     Boolean          @default(false)
+  twoFactorSecret      String?
+  twoFactorBackupCodes String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  auditLogs            AuditLog[]
+  approvals            PeriodApproval[]
+  twoFactorTokens      TwoFactorToken[]
+}
+
+model TwoFactorToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 enum Role {
@@ -56,16 +74,38 @@ model Position {
   id                       String                 @id @default(cuid())
   name                     String                 @unique
   multiplier               Decimal
+  fixedHourlySZD           Int?
   eligibleForServiceCharge Boolean                @default(true)
   defaultOvertimeRule      String?
   minHourlyServiceCharge   Int?
   maxHourlyServiceCharge   Int?
+  sortOrder                Int                    @default(0)
   active                   Boolean                @default(true)
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
   employees                Employee[]
   seasonPositionRules      SeasonPositionRule[]
   monthlyEntries           MonthlyEmployeeEntry[]
+  variations               PositionVariation[]
+  locationRates            PositionLocationRate[]
+}
+
+model PositionVariation {
+  id              String   @id @default(cuid())
+  positionId      String
+  position        Position @relation(fields: [positionId], references: [id])
+  name            String   // e.g. "Diák", "Új belépő"
+  multiplierDelta Decimal  // additive delta from base, e.g. -0.10
+  fixedHourlySZD  Int?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employees     Employee[]
+  locationRates VariationLocationRate[]
+
+  @@unique([positionId, name])
+  @@index([positionId])
 }
 
 // ─── Employees ────────────────────────────────────────────────────────────────
@@ -73,15 +113,17 @@ model Position {
 model Employee {
   id                       String                 @id @default(cuid())
   name                     String
+  sortOrder                Int                    @default(0)
   active                   Boolean                @default(true)
   positionId               String
   position                 Position               @relation(fields: [positionId], references: [id])
+  variationId              String?
+  variation                PositionVariation?     @relation(fields: [variationId], references: [id])
   baseSalaryType           SalaryType
   baseSalaryAmount         Int
   eligibleForServiceCharge Boolean                @default(true)
   startDate                DateTime
   endDate                  DateTime?
-  // FK-based location (replaces former String? location field)
   locationId               String?
   location                 Location?              @relation(fields: [locationId], references: [id])
   notes                    String?                @db.Text
@@ -92,6 +134,7 @@ model Employee {
 
   @@index([positionId])
   @@index([locationId])
+  @@index([variationId])
 }
 
 enum SalaryType {
@@ -166,6 +209,8 @@ model MonthlyPeriod {
   targetDistributionTotal   Int                    @default(0)
   approvedDistributionTotal Int                    @default(0)
   closingBalance            Int                    @default(0)
+  waiterReferenceHourlyRate Int?
+  calculationMode           String                 @default("STANDARD") // "STANDARD" | "FIXED_RATE"
   status                    PeriodStatus           @default(DRAFT)
   notes                     String?                @db.Text
   lockedAt                  DateTime?
@@ -223,6 +268,7 @@ model MonthlyEmployeeEntry {
   notes                        String?       @db.Text
   overrideFlag                 Boolean       @default(false)
   overrideReason               String?
+  calculatedTargetNetHourlyServiceCharge Int?
   createdAt                    DateTime      @default(now())
   updatedAt                    DateTime      @updatedAt
 
@@ -239,19 +285,23 @@ model MonthlyEmployeeEntry {
 enum ExtraBonusType {
   FIXED_AMOUNT
   HOURLY_RATE
+  MULTIPLIER_FULL_HOURLY
+  MULTIPLIER_SERVICE_CHARGE_HOURLY
 }
 
 model ExtraTaskType {
-  id          String         @id @default(cuid())
-  name        String         @unique
-  description String?
-  bonusType   ExtraBonusType
-  // Ft per month (FIXED_AMOUNT) or Ft per hour (HOURLY_RATE)
-  bonusAmount Int
-  active      Boolean        @default(true)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  assignments MonthlyExtraTask[]
+  id             String         @id @default(cuid())
+  name           String         @unique
+  description    String?
+  bonusType      ExtraBonusType
+  // Ft per month (FIXED_AMOUNT) or Ft per hour (HOURLY_RATE); 0 for multiplier types
+  bonusAmount    Int
+  // Multiplier value for MULTIPLIER_* types (e.g. 1.5 = 1.5×)
+  rateMultiplier Decimal?
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  assignments    MonthlyExtraTask[]
 }
 
 model MonthlyExtraTask {
@@ -325,4 +375,36 @@ model ImportLog {
   errors     Json?
   importedBy String
   createdAt  DateTime @default(now())
+}
+
+// ─── Position × Location rates ────────────────────────────────────────────────
+
+model VariationLocationRate {
+  id             String            @id @default(cuid())
+  variationId    String
+  locationId     String
+  fixedHourlySZD Int
+  variation      PositionVariation @relation(fields: [variationId], references: [id])
+  location       Location          @relation(fields: [locationId], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([variationId, locationId])
+  @@index([variationId])
+  @@index([locationId])
+}
+
+model PositionLocationRate {
+  id             String   @id @default(cuid())
+  positionId     String
+  locationId     String
+  fixedHourlySZD Int
+  position       Position @relation(fields: [positionId], references: [id])
+  location       Location @relation(fields: [locationId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([positionId, locationId])
+  @@index([positionId])
+  @@index([locationId])
 }
