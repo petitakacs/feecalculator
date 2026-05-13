@@ -55,7 +55,7 @@ export function Header({ user, locations }: HeaderProps) {
           <div className="text-xs text-gray-500">{roleLabels[user.role] ?? user.role}</div>
         </div>
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => signOut({ redirect: false }).then(() => { window.location.href = "/login"; })}
           className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50"
         >
           Sign out
