@@ -41,13 +41,21 @@ export async function POST(req: NextRequest) {
     plainBackupCodes.map((code) => hash(code, 10))
   );
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      twoFactorEnabled: true,
-      twoFactorBackupCodes: JSON.stringify(hashedBackupCodes),
-    },
-  });
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        twoFactorEnabled: true,
+        twoFactorBackupCodes: JSON.stringify(hashedBackupCodes),
+      },
+    });
+  } catch (err) {
+    console.error("[2FA verify-setup] DB update failed:", err);
+    return NextResponse.json(
+      { error: "A 2FA aktiválása sikertelen volt. Kérjük, próbáld újra." },
+      { status: 500 }
+    );
+  }
 
   // Return plaintext codes only once — user must save these
   return NextResponse.json({ backupCodes: plainBackupCodes });
