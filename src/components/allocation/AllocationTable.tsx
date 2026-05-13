@@ -17,6 +17,15 @@ import { ImportModal } from "@/components/allocation/ImportModal";
 import { hasPermission } from "@/lib/permissions";
 import { Plus, X, ArrowRightLeft, Trash2, BookmarkPlus, BookOpen } from "lucide-react";
 
+function apiErrorMessage(data: { error?: unknown }, fallback: string): string {
+  if (Array.isArray(data.error)) {
+    return (data.error as Array<{ message?: string }>)
+      .map((e) => e.message ?? String(e))
+      .join(", ") || fallback;
+  }
+  return typeof data.error === "string" ? data.error : fallback;
+}
+
 interface HistoryData {
   prevMonth: Record<string, number>;
   prevYearSameMonth: Record<string, number>;
@@ -222,7 +231,7 @@ export function AllocationTable({
       });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Mentés sikertelen", "error");
+        showToast(apiErrorMessage(err, "Mentés sikertelen"), "error");
         setDirtyRows((prev) => new Set(prev).add(entry.id));
         return;
       }
@@ -261,7 +270,7 @@ export function AllocationTable({
       const res = await fetch(`/api/periods/${period.id}/calculate`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Számítás sikertelen", "error");
+        showToast(apiErrorMessage(err, "Számítás sikertelen"), "error");
         return;
       }
       const data = await res.json();
@@ -291,7 +300,7 @@ export function AllocationTable({
       });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Alkalmazás sikertelen", "error");
+        showToast(apiErrorMessage(err, "Alkalmazás sikertelen"), "error");
         return;
       }
       const data = await res.json();
@@ -316,7 +325,7 @@ export function AllocationTable({
       });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Művelet sikertelen", "error");
+        showToast(apiErrorMessage(err, "Művelet sikertelen"), "error");
         return;
       }
       showToast(`${action} sikeresen végrehajtva`, "success");
@@ -339,7 +348,7 @@ export function AllocationTable({
       });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Tömeges hozzáadás sikertelen", "error");
+        showToast(apiErrorMessage(err, "Tömeges hozzáadás sikertelen"), "error");
         return;
       }
       const result = await res.json();
@@ -379,7 +388,7 @@ export function AllocationTable({
       });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Hozzáadás sikertelen", "error");
+        showToast(apiErrorMessage(err, "Hozzáadás sikertelen"), "error");
         return;
       }
       const newEntry: MonthlyEmployeeEntry = await res.json();
@@ -429,7 +438,7 @@ export function AllocationTable({
       });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Mentés sikertelen", "error");
+        showToast(apiErrorMessage(err, "Mentés sikertelen"), "error");
         return;
       }
       const saved: MonthlyExtraTask = await res.json();
@@ -472,7 +481,7 @@ export function AllocationTable({
       const res = await fetch(`/api/periods/${period.id}/entries/${entryId}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Törlés sikertelen", "error");
+        showToast(apiErrorMessage(err, "Törlés sikertelen"), "error");
         return;
       }
       setEntries((prev) => prev.filter((e) => e.id !== entryId));
@@ -534,7 +543,7 @@ export function AllocationTable({
       });
       if (!res.ok) {
         const err = await res.json();
-        showToast(err.error ?? "Visszaállítás sikertelen", "error");
+        showToast(apiErrorMessage(err, "Visszaállítás sikertelen"), "error");
         return;
       }
       const updated: MonthlyEmployeeEntry = await res.json();

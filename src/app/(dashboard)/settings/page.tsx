@@ -5,6 +5,7 @@ import { BusinessRulesManager } from "@/components/settings/BusinessRulesManager
 import { UsersManager } from "@/components/settings/UsersManager";
 import { TwoFactorSettings } from "@/components/settings/TwoFactorSettings";
 import { RolePermissionsMatrix } from "@/components/settings/RolePermissionsMatrix";
+import { EmailSettings } from "@/components/settings/EmailSettings";
 import { hasPermission } from "@/lib/permissions";
 
 export default async function SettingsPage() {
@@ -17,9 +18,11 @@ export default async function SettingsPage() {
     }),
     prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { twoFactorEnabled: true },
+      select: { twoFactorEnabled: true, email: true },
     }),
   ]);
+
+  const emailConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 
   const canManageUsers = hasPermission(session.user.role, "users:manage");
 
@@ -79,6 +82,22 @@ export default async function SettingsPage() {
             Az egyes szerepkörökhöz tartozó jogosultságok áttekintése.
           </p>
           <RolePermissionsMatrix />
+        </div>
+      )}
+
+      {canManageUsers && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-1">Email értesítők</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            SMTP konfiguráció és email értesítők állapota.
+          </p>
+          <EmailSettings
+            configured={emailConfigured}
+            smtpHost={process.env.SMTP_HOST ?? ""}
+            smtpPort={process.env.SMTP_PORT ?? "587"}
+            smtpUser={process.env.SMTP_USER ?? ""}
+            currentUserEmail={currentUser?.email ?? ""}
+          />
         </div>
       )}
 

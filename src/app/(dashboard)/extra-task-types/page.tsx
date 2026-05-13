@@ -26,6 +26,7 @@ export default async function ExtraTaskTypesPage() {
           description: t.description ?? undefined,
           bonusType: t.bonusType,
           bonusAmount: t.bonusAmount,
+          rateMultiplier: t.rateMultiplier != null ? Number(t.rateMultiplier) : null,
           active: t.active,
           createdAt: t.createdAt.toISOString(),
           updatedAt: t.updatedAt.toISOString(),

@@ -43,7 +43,14 @@ export function ExtraTaskTypesManager({ initialTypes, userRole }: ExtraTaskTypes
 
   const refresh = async () => {
     const res = await fetch("/api/extra-task-types");
-    if (res.ok) setTypes(await res.json());
+    if (res.ok) {
+      const raw = await res.json();
+      setTypes(raw.map((t: TaskTypeWithCount) => ({
+        ...t,
+        bonusAmount: Number(t.bonusAmount),
+        rateMultiplier: t.rateMultiplier != null ? Number(t.rateMultiplier) : null,
+      })));
+    }
   };
 
   const handleSave = async () => {
@@ -67,7 +74,10 @@ export function ExtraTaskTypesManager({ initialTypes, userRole }: ExtraTaskTypes
       });
       const data = await res.json();
       if (!res.ok) {
-        showToast(data.error ?? "Mentés sikertelen", "error");
+        const errMsg = Array.isArray(data.error)
+          ? data.error.map((e: { message?: string }) => e.message ?? String(e)).join(", ")
+          : (typeof data.error === "string" ? data.error : "Mentés sikertelen");
+        showToast(errMsg, "error");
         return;
       }
       showToast(editId ? "Frissítve" : "Létrehozva", "success");
@@ -99,8 +109,8 @@ export function ExtraTaskTypesManager({ initialTypes, userRole }: ExtraTaskTypes
       name: t.name,
       description: t.description ?? "",
       bonusType: t.bonusType,
-      bonusAmount: t.bonusAmount,
-      rateMultiplier: t.rateMultiplier ?? 1,
+      bonusAmount: Number(t.bonusAmount),
+      rateMultiplier: t.rateMultiplier != null ? Number(t.rateMultiplier) : 1,
       active: t.active,
     });
   };
