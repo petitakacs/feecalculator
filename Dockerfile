@@ -12,7 +12,7 @@ FROM deps AS migrate
 WORKDIR /app
 COPY . .
 RUN npx --no-install prisma generate --schema=./prisma/schema.prisma
-CMD ["npx", "--no-install", "prisma", "migrate", "deploy", "--schema=./prisma/schema.prisma"]
+CMD ["npx", "--no-install", "prisma", "db", "push", "--skip-generate", "--schema=./prisma/schema.prisma"]
 
 FROM base AS builder
 WORKDIR /app

@@ -39,8 +39,8 @@ model User {
   role                 Role             @default(STORE_MANAGER)
   active               Boolean          @default(true)
   twoFactorEnabled     Boolean          @default(false)
-  twoFactorSecret      String?
-  twoFactorBackupCodes String?
+  twoFactorSecret      String?          @db.Text
+  twoFactorBackupCodes String?          @db.Text
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   auditLogs            AuditLog[]
