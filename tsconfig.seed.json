@@ -1,20 +1,19 @@
 {
   "compilerOptions": {
-    "lib": ["esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": false,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": ".",
     "esModuleInterop": true,
-    "module": "commonjs",
-    "moduleResolution": "node",
     "resolveJsonModule": true,
-    "isolatedModules": false,
-    "target": "ES2017",
-    "paths": {
-      "@/*": ["./src/*"]
-    },
-    "outDir": "./.ts-node"
+    "strict": false,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "ignoreDeprecations": "6.0"
   },
-  "include": ["prisma/seed.ts"],
-  "exclude": ["node_modules"]
+  "ts-node": {
+    "transpileOnly": true
+  },
+  "include": ["prisma/seed.ts"]
 }

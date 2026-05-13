@@ -8,6 +8,12 @@ RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json* ./
 RUN npm ci
 
+FROM deps AS migrate
+WORKDIR /app
+COPY . .
+RUN npx --no-install prisma generate --schema=./prisma/schema.prisma
+CMD ["npx", "--no-install", "prisma", "migrate", "deploy", "--schema=./prisma/schema.prisma"]
+
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -29,10 +35,9 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
-
+COPY --from=builder /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder /app/prisma ./prisma
 
 USER nextjs
 
