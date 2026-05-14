@@ -309,6 +309,7 @@ model ExtraTaskType {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   assignments    MonthlyExtraTask[]
+  rateHistory    ExtraTaskRateHistory[]
 }
 
 model MonthlyExtraTask {
@@ -492,4 +493,19 @@ model EmployeeSalaryHistory {
   createdAt        DateTime   @default(now())
 
   @@index([employeeId, effectiveFrom])
+}
+
+model ExtraTaskRateHistory {
+  id              String         @id @default(cuid())
+  extraTaskTypeId String
+  extraTaskType   ExtraTaskType  @relation(fields: [extraTaskTypeId], references: [id])
+  bonusType       ExtraBonusType
+  bonusAmount     Int
+  rateMultiplier  Decimal?
+  effectiveFrom   DateTime       @db.Date
+  effectiveTo     DateTime?      @db.Date
+  note            String?        @db.Text
+  createdAt       DateTime       @default(now())
+
+  @@index([extraTaskTypeId, effectiveFrom])
 }

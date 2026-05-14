@@ -15,6 +15,9 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const existing = await prisma.extraTaskType.findUnique({ where: { id } });
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
   const body = await req.json();
   const parsed = UpdateExtraTaskTypeSchema.safeParse(body);
   if (!parsed.success) {
@@ -26,6 +29,32 @@ export async function PATCH(
     data: parsed.data,
     include: { _count: { select: { assignments: true } } },
   });
+
+  // If the rate-relevant fields changed, record a new history entry
+  const rateChanged =
+    (parsed.data.bonusAmount !== undefined && parsed.data.bonusAmount !== existing.bonusAmount) ||
+    (parsed.data.rateMultiplier !== undefined &&
+      Number(parsed.data.rateMultiplier ?? null) !== Number(existing.rateMultiplier ?? null)) ||
+    (parsed.data.bonusType !== undefined && parsed.data.bonusType !== existing.bonusType);
+  if (rateChanged) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    await prisma.extraTaskRateHistory.updateMany({
+      where: { extraTaskTypeId: id, effectiveTo: null, effectiveFrom: { lt: today } },
+      data: { effectiveTo: new Date(today.getTime() - 86400000) },
+    });
+    await prisma.extraTaskRateHistory.create({
+      data: {
+        extraTaskTypeId: id,
+        bonusType: type.bonusType,
+        bonusAmount: type.bonusAmount,
+        rateMultiplier: type.rateMultiplier ?? null,
+        effectiveFrom: today,
+        note: "Díjszabás módosítva az admin felületen",
+      },
+    });
+  }
+
   return NextResponse.json(type);
 }
 
