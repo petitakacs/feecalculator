@@ -37,12 +37,14 @@ export async function POST(
     return NextResponse.json({ error: "Period is closed" }, { status: 422 });
   }
 
-  // Get active business rule
-  const now = new Date();
+  // Use the first day of the period month as the reference date for all historical lookups.
+  // This ensures that recalculating old periods uses the rates that were valid at that time.
+  const periodDate = new Date(period.year, period.month - 1, 1);
+
   const businessRule = await prisma.businessRule.findFirst({
     where: {
-      effectiveFrom: { lte: now },
-      OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
+      effectiveFrom: { lte: periodDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: periodDate } }],
     },
     orderBy: { effectiveFrom: "desc" },
   });
@@ -69,34 +71,115 @@ export async function POST(
     seasonRules.map((r) => [r.positionId, Number(r.multiplier)])
   );
 
-  const [locationRates, variationLocationRates] = period.locationId
-    ? await Promise.all([
-        prisma.positionLocationRate.findMany({ where: { locationId: period.locationId } }),
-        prisma.variationLocationRate.findMany({ where: { locationId: period.locationId } }),
-      ])
-    : [[], []];
-  const locationRateMap = new Map(locationRates.map((r) => [r.positionId, r.fixedHourlySZD]));
-  const variationLocationRateMap = new Map(variationLocationRates.map((r) => [r.variationId, r.fixedHourlySZD]));
+  // Fetch all position rate histories effective at periodDate; fall back to static value if none.
+  const positionRateHistories = await prisma.positionRateHistory.findMany({
+    where: {
+      effectiveFrom: { lte: periodDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: periodDate } }],
+    },
+    orderBy: { effectiveFrom: "desc" },
+  });
+  // One entry per position: most recent wins (orderBy desc + dedup by positionId)
+  const positionRateMap = new Map<string, { multiplier: number; fixedHourlySZD: number | null }>();
+  for (const h of positionRateHistories) {
+    if (!positionRateMap.has(h.positionId)) {
+      positionRateMap.set(h.positionId, {
+        multiplier: Number(h.multiplier),
+        fixedHourlySZD: h.fixedHourlySZD ?? null,
+      });
+    }
+  }
+
+  const variationRateHistories = await prisma.variationRateHistory.findMany({
+    where: {
+      effectiveFrom: { lte: periodDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: periodDate } }],
+    },
+    orderBy: { effectiveFrom: "desc" },
+  });
+  const variationRateMap = new Map<string, { multiplierDelta: number; fixedHourlySZD: number | null }>();
+  for (const h of variationRateHistories) {
+    if (!variationRateMap.has(h.variationId)) {
+      variationRateMap.set(h.variationId, {
+        multiplierDelta: Number(h.multiplierDelta),
+        fixedHourlySZD: h.fixedHourlySZD ?? null,
+      });
+    }
+  }
+
+  const [locationRates, variationLocationRates, locationRateHistories, variationLocationRateHistories] =
+    period.locationId
+      ? await Promise.all([
+          prisma.positionLocationRate.findMany({ where: { locationId: period.locationId } }),
+          prisma.variationLocationRate.findMany({ where: { locationId: period.locationId } }),
+          prisma.positionLocationRateHistory.findMany({
+            where: {
+              locationId: period.locationId,
+              effectiveFrom: { lte: periodDate },
+              OR: [{ effectiveTo: null }, { effectiveTo: { gte: periodDate } }],
+            },
+            orderBy: { effectiveFrom: "desc" },
+          }),
+          prisma.variationLocationRateHistory.findMany({
+            where: {
+              locationId: period.locationId,
+              effectiveFrom: { lte: periodDate },
+              OR: [{ effectiveTo: null }, { effectiveTo: { gte: periodDate } }],
+            },
+            orderBy: { effectiveFrom: "desc" },
+          }),
+        ])
+      : [[], [], [], []];
+
+  // Build location-rate maps: history takes priority over static PositionLocationRate
+  const locationRateMap = new Map<string, number>(locationRates.map((r) => [r.positionId, r.fixedHourlySZD]));
+  for (const h of locationRateHistories) {
+    if (!locationRateMap.has(h.positionId)) {
+      locationRateMap.set(h.positionId, h.fixedHourlySZD);
+    }
+  }
+  const variationLocationRateMap = new Map<string, number>(variationLocationRates.map((r) => [r.variationId, r.fixedHourlySZD]));
+  for (const h of variationLocationRateHistories) {
+    if (!variationLocationRateMap.has(h.variationId)) {
+      variationLocationRateMap.set(h.variationId, h.fixedHourlySZD);
+    }
+  }
 
   // Identify waiter entries (position multiplier = 1.0, or waiter position by name)
   const waiterEntries: WaiterEntry[] = [];
   const allEntries: PositionEntry[] = [];
 
   for (const entry of period.entries) {
-    // Resolve fixed hourly rate: variation+location > location (base position) > variation global > position global
     const variationId = entry.employee?.variationId ?? null;
+
+    // Resolve fixed hourly rate (priority: history-based > static)
+    // Hierarchy: variation+location > position+location > variation global > position global
     const variationLocationFixed = variationId ? (variationLocationRateMap.get(variationId) ?? null) : null;
     const locationFixed = locationRateMap.get(entry.positionId) ?? null;
-    const variationFixed = entry.employee?.variation?.fixedHourlySZD ?? null;
-    const positionFixed = entry.position.fixedHourlySZD ?? null;
+
+    // Variation global fixed: prefer history, fall back to static field
+    const variationHistorical = variationId ? variationRateMap.get(variationId) : undefined;
+    const variationFixed = variationHistorical?.fixedHourlySZD ?? entry.employee?.variation?.fixedHourlySZD ?? null;
+
+    // Position global fixed: prefer history, fall back to static field
+    const positionHistorical = positionRateMap.get(entry.positionId);
+    const positionFixed = positionHistorical?.fixedHourlySZD ?? entry.position.fixedHourlySZD ?? null;
+
     const resolvedFixed = variationLocationFixed ?? locationFixed ?? variationFixed ?? positionFixed;
 
     // Multiplier path (used only when no fixed rate)
-    const baseMultiplier = multiplierOverrideMap.get(entry.positionId) ??
+    // Season rule overrides take precedence, then history-based multiplier, then static field
+    const baseMultiplier =
+      multiplierOverrideMap.get(entry.positionId) ??
+      positionHistorical?.multiplier ??
       Number(entry.position.multiplier);
-    const variationDelta = entry.employee?.variation?.multiplierDelta != null
-      ? Number(entry.employee.variation.multiplierDelta)
-      : 0;
+
+    const variationDelta =
+      variationHistorical?.multiplierDelta ??
+      (entry.employee?.variation?.multiplierDelta != null
+        ? Number(entry.employee.variation.multiplierDelta)
+        : 0);
+
     const positionMultiplier = baseMultiplier + variationDelta;
 
     allEntries.push({

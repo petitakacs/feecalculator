@@ -8,6 +8,7 @@ import { Role } from "@/types";
 import { hasPermission } from "@/lib/permissions";
 import { useLocationFilter } from "@/lib/location-context";
 import { GripVertical } from "lucide-react";
+import { SalaryHistoryDialog } from "@/components/shared/SalaryHistoryDialog";
 
 interface EmployeeRow {
   id: string;
@@ -156,7 +157,17 @@ export function EmployeesTable({
                   <td className="px-6 py-4 text-gray-500">
                     {emp.baseSalaryType === "HOURLY" ? "Órabér" : "Havi bér"}
                   </td>
-                  <td className="px-6 py-4 text-right">{formatCurrency(emp.baseSalaryAmount)}</td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex flex-col items-end gap-1">
+                      <span>{formatCurrency(emp.baseSalaryAmount)}</span>
+                      <SalaryHistoryDialog
+                        employeeId={emp.id}
+                        employeeName={emp.name}
+                        currentType={emp.baseSalaryType as "HOURLY" | "MONTHLY"}
+                        currentAmount={emp.baseSalaryAmount}
+                      />
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-gray-500">{formatDate(emp.startDate)}</td>
                   {canWrite && (
                     <td className="px-6 py-4 text-center">

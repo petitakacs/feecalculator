@@ -6,6 +6,7 @@ import { showToast } from "@/components/ui/toaster";
 import { hasPermission } from "@/lib/permissions";
 import { formatCurrency } from "@/lib/format";
 import { ChevronRight, ChevronDown, Plus, X, GripVertical } from "lucide-react";
+import { RateHistoryDialog } from "@/components/shared/RateHistoryDialog";
 
 interface LocationRate {
   id: string;
@@ -411,7 +412,17 @@ export function PositionsManager({
                           )}
                         </div>
                       ) : (
-                        <RateDisplay multiplier={pos.multiplier} fixedHourlySZD={pos.fixedHourlySZD} />
+                        <div className="flex flex-col items-end gap-1">
+                          <RateDisplay multiplier={pos.multiplier} fixedHourlySZD={pos.fixedHourlySZD} />
+                          <RateHistoryDialog
+                            title={`Díjszabás előzmények – ${pos.name}`}
+                            fetchUrl={`/api/positions/${pos.id}/rate-history`}
+                            postUrl={`/api/positions/${pos.id}/rate-history`}
+                            mode="position"
+                            currentMultiplier={pos.multiplier}
+                            currentFixedHourlySZD={pos.fixedHourlySZD}
+                          />
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -458,7 +469,17 @@ export function PositionsManager({
                               </div>
                             </td>
                             <td className="px-4 py-2 text-right">
-                              <VariationRateDisplay baseMultiplier={pos.multiplier} baseFixed={pos.fixedHourlySZD} delta={v.multiplierDelta} fixedHourlySZD={v.fixedHourlySZD} />
+                              <div className="flex flex-col items-end gap-1">
+                                <VariationRateDisplay baseMultiplier={pos.multiplier} baseFixed={pos.fixedHourlySZD} delta={v.multiplierDelta} fixedHourlySZD={v.fixedHourlySZD} />
+                                <RateHistoryDialog
+                                  title={`Díjszabás előzmények – ${v.name}`}
+                                  fetchUrl={`/api/positions/${pos.id}/variations/${v.id}/rate-history`}
+                                  postUrl={`/api/positions/${pos.id}/variations/${v.id}/rate-history`}
+                                  mode="variation"
+                                  currentMultiplier={v.multiplierDelta}
+                                  currentFixedHourlySZD={v.fixedHourlySZD}
+                                />
+                              </div>
                             </td>
                             <td className="px-4 py-2" colSpan={2} />
                             <td className="px-4 py-2 text-center">
