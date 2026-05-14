@@ -13,9 +13,9 @@ const CreateVariationRateHistorySchema = z.object({
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string; variationId: string }> }
+  { params }: { params: Promise<{ id: string; varId: string }> }
 ) {
-  const { variationId } = await params;
+  const { varId: variationId } = await params;
   const session = await getAuthSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -29,9 +29,9 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string; variationId: string }> }
+  { params }: { params: Promise<{ id: string; varId: string }> }
 ) {
-  const { variationId } = await params;
+  const { varId: variationId } = await params;
   const session = await getAuthSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session.user.role, "positions:write")) {
