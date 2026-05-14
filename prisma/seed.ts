@@ -302,6 +302,46 @@ async function main() {
   ]);
   console.log(`Created ${employees.length} employees`);
 
+  // Seed initial PositionRateHistory from current position values
+  // effectiveFrom = 2024-01-01, matching the business rule start date
+  const rateHistoryStart = new Date("2024-01-01");
+  await Promise.all(
+    positions.map((pos) =>
+      prisma.positionRateHistory.upsert({
+        where: { id: `prh-${pos.id}` },
+        update: {},
+        create: {
+          id: `prh-${pos.id}`,
+          positionId: pos.id,
+          multiplier: pos.multiplier,
+          fixedHourlySZD: pos.fixedHourlySZD ?? null,
+          effectiveFrom: rateHistoryStart,
+          note: "Kiinduló szorzó (seed)",
+        },
+      })
+    )
+  );
+  console.log(`Seeded PositionRateHistory for ${positions.length} positions`);
+
+  // Seed initial EmployeeSalaryHistory from current employee values
+  await Promise.all(
+    employees.map((emp) =>
+      prisma.employeeSalaryHistory.upsert({
+        where: { id: `esh-${emp.id}` },
+        update: {},
+        create: {
+          id: `esh-${emp.id}`,
+          employeeId: emp.id,
+          baseSalaryType: emp.baseSalaryType,
+          baseSalaryAmount: emp.baseSalaryAmount,
+          effectiveFrom: emp.startDate,
+          note: "Kiinduló alapbér (seed)",
+        },
+      })
+    )
+  );
+  console.log(`Seeded EmployeeSalaryHistory for ${employees.length} employees`);
+
   // Create a completed monthly period for December 2024 (Főétterem)
   const REF = 1400;
 

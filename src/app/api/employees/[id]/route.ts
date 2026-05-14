@@ -53,6 +53,28 @@ export async function PATCH(
     include: { position: true },
   });
 
+  // When the salary changes, record a new history entry effective today
+  const salaryChanged =
+    (parsed.data.baseSalaryAmount !== undefined && parsed.data.baseSalaryAmount !== existing.baseSalaryAmount) ||
+    (parsed.data.baseSalaryType !== undefined && parsed.data.baseSalaryType !== existing.baseSalaryType);
+  if (salaryChanged) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    await prisma.employeeSalaryHistory.updateMany({
+      where: { employeeId: id, effectiveTo: null, effectiveFrom: { lt: today } },
+      data: { effectiveTo: new Date(today.getTime() - 86400000) },
+    });
+    await prisma.employeeSalaryHistory.create({
+      data: {
+        employeeId: id,
+        baseSalaryType: parsed.data.baseSalaryType ?? existing.baseSalaryType,
+        baseSalaryAmount: parsed.data.baseSalaryAmount ?? existing.baseSalaryAmount,
+        effectiveFrom: today,
+        note: "Alapbér módosítva az admin felületen",
+      },
+    });
+  }
+
   await createAuditLog({
     userId: session.user.id,
     action: "UPDATE",
