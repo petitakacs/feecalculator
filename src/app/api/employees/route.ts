@@ -42,6 +42,17 @@ export async function POST(req: NextRequest) {
     include: { position: true },
   });
 
+  // Seed initial salary history from the employee's start date
+  await prisma.employeeSalaryHistory.create({
+    data: {
+      employeeId: employee.id,
+      baseSalaryType: employee.baseSalaryType,
+      baseSalaryAmount: employee.baseSalaryAmount,
+      effectiveFrom: employee.startDate,
+      note: "Kezdő beállítás",
+    },
+  });
+
   await createAuditLog({
     userId: session.user.id,
     action: "CREATE",

@@ -20,9 +20,12 @@ interface RateHistoryDialogProps {
   title: string;
   fetchUrl: string;
   postUrl: string;
-  mode: "position" | "variation";
+  /** position/variation: shows multiplier + optional fixed. fixedOnly: only fixed rate (for location rates). */
+  mode: "position" | "variation" | "fixedOnly";
   currentMultiplier?: number;
   currentFixedHourlySZD?: number | null;
+  /** Extra fields merged into the POST payload (e.g. locationId for location-specific rates). */
+  extraPayload?: Record<string, unknown>;
   trigger?: React.ReactNode;
 }
 
@@ -45,6 +48,7 @@ export function RateHistoryDialog({
   mode,
   currentMultiplier,
   currentFixedHourlySZD,
+  extraPayload,
   trigger,
 }: RateHistoryDialogProps) {
   const [open, setOpen] = useState(false);
@@ -61,7 +65,7 @@ export function RateHistoryDialog({
   );
   const [formEffectiveFrom, setFormEffectiveFrom] = useState(today());
   const [formNote, setFormNote] = useState("");
-  const [useFixed, setUseFixed] = useState(currentFixedHourlySZD != null);
+  const [useFixed, setUseFixed] = useState(mode === "fixedOnly" || currentFixedHourlySZD != null);
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
@@ -92,11 +96,15 @@ export function RateHistoryDialog({
     }
 
     const payload: Record<string, unknown> = {
+      ...(extraPayload ?? {}),
       effectiveFrom: formEffectiveFrom,
       note: formNote || undefined,
     };
 
-    if (mode === "position") {
+    if (mode === "fixedOnly") {
+      if (!formFixed) { showToast("Add meg a fix óradíjat", "error"); return; }
+      payload.fixedHourlySZD = parseInt(formFixed);
+    } else if (mode === "position") {
       payload.multiplier = multiplierVal;
       payload.fixedHourlySZD = useFixed && formFixed !== "" ? parseInt(formFixed) : null;
     } else {
@@ -166,19 +174,21 @@ export function RateHistoryDialog({
                   <h3 className="text-sm font-semibold text-blue-900">Új díjszabás rögzítése</h3>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        {multiplierLabel}
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formMultiplier}
-                        onChange={(e) => setFormMultiplier(e.target.value)}
-                        className="w-full border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder={mode === "position" ? "pl. 1.15" : "pl. -0.10"}
-                      />
-                    </div>
+                    {mode !== "fixedOnly" && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          {multiplierLabel}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formMultiplier}
+                          onChange={(e) => setFormMultiplier(e.target.value)}
+                          className="w-full border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder={mode === "position" ? "pl. 1.15" : "pl. -0.10"}
+                        />
+                      </div>
+                    )}
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">
                         Érvényesség kezdete
@@ -192,30 +202,45 @@ export function RateHistoryDialog({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="useFixed"
-                      checked={useFixed}
-                      onChange={(e) => setUseFixed(e.target.checked)}
-                      className="rounded"
-                    />
-                    <label htmlFor="useFixed" className="text-xs text-gray-700">
-                      Fix óradíj (felülírja a szorzót)
-                    </label>
-                    {useFixed && (
+                  {mode === "fixedOnly" ? (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-gray-700">Fix óradíj (Ft/óra)</label>
                       <input
                         type="number"
                         step="1"
                         min="0"
                         value={formFixed}
                         onChange={(e) => setFormFixed(e.target.value)}
-                        className="ml-2 w-32 border rounded px-2.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-32 border rounded px-2.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="pl. 1800"
                       />
-                    )}
-                    {useFixed && <span className="text-xs text-gray-500">Ft/óra</span>}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="useFixed"
+                        checked={useFixed}
+                        onChange={(e) => setUseFixed(e.target.checked)}
+                        className="rounded"
+                      />
+                      <label htmlFor="useFixed" className="text-xs text-gray-700">
+                        Fix óradíj (felülírja a szorzót)
+                      </label>
+                      {useFixed && (
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={formFixed}
+                          onChange={(e) => setFormFixed(e.target.value)}
+                          className="ml-2 w-32 border rounded px-2.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="pl. 1800"
+                        />
+                      )}
+                      {useFixed && <span className="text-xs text-gray-500">Ft/óra</span>}
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">

@@ -31,6 +31,19 @@ export async function POST(req: NextRequest) {
 
   const position = await prisma.position.create({ data: parsed.data });
 
+  // Seed the initial rate history record
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  await prisma.positionRateHistory.create({
+    data: {
+      positionId: position.id,
+      multiplier: position.multiplier,
+      fixedHourlySZD: position.fixedHourlySZD ?? null,
+      effectiveFrom: today,
+      note: "Kezdő beállítás",
+    },
+  });
+
   await createAuditLog({
     userId: session.user.id,
     action: "CREATE",

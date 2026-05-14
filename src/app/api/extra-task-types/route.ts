@@ -29,5 +29,19 @@ export async function POST(req: NextRequest) {
   }
 
   const type = await prisma.extraTaskType.create({ data: parsed.data });
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  await prisma.extraTaskRateHistory.create({
+    data: {
+      extraTaskTypeId: type.id,
+      bonusType: type.bonusType,
+      bonusAmount: type.bonusAmount,
+      rateMultiplier: type.rateMultiplier ?? null,
+      effectiveFrom: today,
+      note: "Kezdő beállítás",
+    },
+  });
+
   return NextResponse.json(type, { status: 201 });
 }

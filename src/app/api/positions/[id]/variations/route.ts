@@ -46,5 +46,17 @@ export async function POST(
     },
   });
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  await prisma.variationRateHistory.create({
+    data: {
+      variationId: variation.id,
+      multiplierDelta: variation.multiplierDelta,
+      fixedHourlySZD: variation.fixedHourlySZD ?? null,
+      effectiveFrom: today,
+      note: "Kezdő beállítás",
+    },
+  });
+
   return NextResponse.json(variation, { status: 201 });
 }
