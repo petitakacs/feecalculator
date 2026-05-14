@@ -513,9 +513,19 @@ export function PositionsManager({
                                           <tr key={r.locationId} className="border-t border-indigo-100">
                                             <td className="py-0.5 text-gray-700">{r.location.name}</td>
                                             <td className="py-0.5 text-right">
-                                              <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-amber-50 text-amber-800 border border-amber-200">
-                                                {formatCurrency(r.fixedHourlySZD)}/óra
-                                              </span>
+                                              <div className="flex flex-col items-end gap-0.5">
+                                                <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-amber-50 text-amber-800 border border-amber-200">
+                                                  {formatCurrency(r.fixedHourlySZD)}/óra
+                                                </span>
+                                                <RateHistoryDialog
+                                                  title={`Előzmények – ${v.name} / ${r.location.name}`}
+                                                  fetchUrl={`/api/positions/${pos.id}/variations/${v.id}/location-rate-history?locationId=${r.locationId}`}
+                                                  postUrl={`/api/positions/${pos.id}/variations/${v.id}/location-rate-history`}
+                                                  mode="fixedOnly"
+                                                  currentFixedHourlySZD={r.fixedHourlySZD}
+                                                  extraPayload={{ locationId: r.locationId }}
+                                                />
+                                              </div>
                                             </td>
                                             {canWrite && (
                                               <td className="py-0.5 text-right w-8">
@@ -607,9 +617,19 @@ export function PositionsManager({
                                     <tr key={r.locationId} className="border-t border-orange-100">
                                       <td className="py-0.5 text-gray-700">{r.location.name}</td>
                                       <td className="py-0.5 text-right">
-                                        <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-amber-50 text-amber-800 border border-amber-200">
-                                          {formatCurrency(r.fixedHourlySZD)}/óra
-                                        </span>
+                                        <div className="flex flex-col items-end gap-0.5">
+                                          <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-amber-50 text-amber-800 border border-amber-200">
+                                            {formatCurrency(r.fixedHourlySZD)}/óra
+                                          </span>
+                                          <RateHistoryDialog
+                                            title={`Előzmények – ${pos.name} / ${r.location.name}`}
+                                            fetchUrl={`/api/positions/${pos.id}/location-rate-history?locationId=${r.locationId}`}
+                                            postUrl={`/api/positions/${pos.id}/location-rate-history`}
+                                            mode="fixedOnly"
+                                            currentFixedHourlySZD={r.fixedHourlySZD}
+                                            extraPayload={{ locationId: r.locationId }}
+                                          />
+                                        </div>
                                       </td>
                                       {canWrite && (
                                         <td className="py-0.5 text-right">

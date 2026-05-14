@@ -62,5 +62,22 @@ export async function POST(
     include: { location: { select: { id: true, name: true } } },
   });
 
+  // Record history
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  await prisma.variationLocationRateHistory.updateMany({
+    where: { variationId: varId, locationId: parsed.data.locationId, effectiveTo: null, effectiveFrom: { lt: today } },
+    data: { effectiveTo: new Date(today.getTime() - 86400000) },
+  });
+  await prisma.variationLocationRateHistory.create({
+    data: {
+      variationId: varId,
+      locationId: parsed.data.locationId,
+      fixedHourlySZD: parsed.data.fixedHourlySZD,
+      effectiveFrom: today,
+      note: "Kezdő beállítás",
+    },
+  });
+
   return NextResponse.json(rate, { status: 201 });
 }

@@ -6,6 +6,7 @@ import { showToast } from "@/components/ui/toaster";
 import { hasPermission } from "@/lib/permissions";
 import { formatCurrency } from "@/lib/format";
 import { Pencil, Trash2 } from "lucide-react";
+import { ExtraTaskRateHistoryDialog } from "@/components/shared/ExtraTaskRateHistoryDialog";
 
 interface TaskTypeWithCount {
   id: string;
@@ -248,11 +249,22 @@ export function ExtraTaskTypesManager({ initialTypes, userRole }: ExtraTaskTypes
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right font-medium">
-                  {t.bonusType === "FIXED_AMOUNT"
-                    ? `${formatCurrency(t.bonusAmount)}/hó`
-                    : t.bonusType === "HOURLY_RATE"
-                    ? `${formatCurrency(t.bonusAmount)}/óra`
-                    : `${t.rateMultiplier}×`}
+                  <div className="flex flex-col items-end gap-1">
+                    <span>
+                      {t.bonusType === "FIXED_AMOUNT"
+                        ? `${formatCurrency(t.bonusAmount)}/hó`
+                        : t.bonusType === "HOURLY_RATE"
+                        ? `${formatCurrency(t.bonusAmount)}/óra`
+                        : `${t.rateMultiplier}×`}
+                    </span>
+                    <ExtraTaskRateHistoryDialog
+                      extraTaskTypeId={t.id}
+                      taskName={t.name}
+                      currentBonusType={t.bonusType}
+                      currentBonusAmount={t.bonusAmount}
+                      currentRateMultiplier={t.rateMultiplier}
+                    />
+                  </div>
                 </td>
                 <td className="px-6 py-4 text-center text-gray-600">{t._count.assignments}</td>
                 <td className="px-6 py-4 text-center">
