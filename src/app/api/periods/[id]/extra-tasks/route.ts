@@ -43,14 +43,44 @@ export async function POST(
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
 
-  const taskType = await prisma.extraTaskType.findUnique({
-    where: { id: parsed.data.extraTaskTypeId },
-  });
+  const [taskType, fullPeriod] = await Promise.all([
+    prisma.extraTaskType.findUnique({ where: { id: parsed.data.extraTaskTypeId } }),
+    prisma.monthlyPeriod.findUnique({ where: { id }, select: { seasonId: true } }),
+  ]);
   if (!taskType) return NextResponse.json({ error: "Extra task type not found" }, { status: 404 });
 
+  // Check for seasonal rate override for this extra task type
+  const seasonRate = fullPeriod?.seasonId
+    ? await prisma.seasonExtraTaskRate.findUnique({
+        where: { seasonId_extraTaskTypeId: { seasonId: fullPeriod.seasonId, extraTaskTypeId: taskType.id } },
+      })
+    : null;
+
+  // Also check date-based rate history for this task type
+  const periodDate = new Date(period.year, period.month - 1, 1);
+  const rateHistory = await prisma.extraTaskRateHistory.findFirst({
+    where: {
+      extraTaskTypeId: taskType.id,
+      effectiveFrom: { lte: periodDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: periodDate } }],
+    },
+    orderBy: { effectiveFrom: "desc" },
+  });
+
+  // Resolve effective rates: season override > date-based history > static fields
+  const effectiveBonusType = seasonRate?.bonusAmount != null || seasonRate?.rateMultiplier != null
+    ? taskType.bonusType  // season rate uses same type but different amount
+    : rateHistory?.bonusType ?? taskType.bonusType;
+  const effectiveBonusAmount = seasonRate?.bonusAmount ?? rateHistory?.bonusAmount ?? taskType.bonusAmount;
+  const effectiveRateMultiplier = seasonRate?.rateMultiplier != null
+    ? Number(seasonRate.rateMultiplier)
+    : rateHistory?.rateMultiplier != null
+    ? Number(rateHistory.rateMultiplier)
+    : taskType.rateMultiplier != null ? Number(taskType.rateMultiplier) : 0;
+
   const isMultiplierType =
-    taskType.bonusType === "MULTIPLIER_FULL_HOURLY" ||
-    taskType.bonusType === "MULTIPLIER_SERVICE_CHARGE_HOURLY";
+    effectiveBonusType === "MULTIPLIER_FULL_HOURLY" ||
+    effectiveBonusType === "MULTIPLIER_SERVICE_CHARGE_HOURLY";
 
   if (isMultiplierType && !parsed.data.hours) {
     return NextResponse.json({ error: "Az óraszám megadása kötelező ennél a típusnál" }, { status: 400 });
@@ -58,14 +88,14 @@ export async function POST(
 
   // Compute amount
   let amount: number;
-  if (taskType.bonusType === "FIXED_AMOUNT") {
-    amount = taskType.bonusAmount;
-  } else if (taskType.bonusType === "HOURLY_RATE") {
+  if (effectiveBonusType === "FIXED_AMOUNT") {
+    amount = effectiveBonusAmount;
+  } else if (effectiveBonusType === "HOURLY_RATE") {
     const hours = Number(parsed.data.hours ?? 0);
-    amount = Math.round(taskType.bonusAmount * hours);
+    amount = Math.round(effectiveBonusAmount * hours);
   } else {
     // Multiplier types: need the employee's rate from their period entry
-    const multiplier = Number(taskType.rateMultiplier ?? 0);
+    const multiplier = effectiveRateMultiplier;
     const hours = Number(parsed.data.hours ?? 0);
     const employeeEntry = await prisma.monthlyEmployeeEntry.findFirst({
       where: { periodId: id, employeeId: parsed.data.employeeId },
@@ -76,7 +106,7 @@ export async function POST(
       return NextResponse.json({ error: "A dolgozónak nincs bejegyzése ebben az időszakban" }, { status: 422 });
     }
 
-    if (taskType.bonusType === "MULTIPLIER_SERVICE_CHARGE_HOURLY") {
+    if (effectiveBonusType === "MULTIPLIER_SERVICE_CHARGE_HOURLY") {
       if (employeeEntry.targetNetHourlyServiceCharge == null) {
         return NextResponse.json({ error: "A szervízdíj órabér még nem kalkulált. Futtasd le a kalkulációt először." }, { status: 422 });
       }

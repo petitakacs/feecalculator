@@ -63,12 +63,34 @@ export async function POST(
     employeeContribution: Number(businessRule.employeeContribution),
   };
 
-  // Get season position rules (multiplier overrides)
-  const seasonRules = await prisma.seasonPositionRule.findMany({
-    where: { seasonId: period.seasonId },
-  });
-  const multiplierOverrideMap = new Map(
-    seasonRules.map((r) => [r.positionId, Number(r.multiplier)])
+  // Get season position/variation rules (multiplier overrides) and location rate overrides
+  const [seasonPositionRules, seasonVariationRules, seasonPosLocationRates, seasonVarLocationRates] =
+    await Promise.all([
+      prisma.seasonPositionRule.findMany({ where: { seasonId: period.seasonId } }),
+      prisma.seasonVariationRule.findMany({ where: { seasonId: period.seasonId } }),
+      period.locationId
+        ? prisma.seasonPositionLocationRate.findMany({ where: { seasonId: period.seasonId, locationId: period.locationId } })
+        : Promise.resolve([]),
+      period.locationId
+        ? prisma.seasonVariationLocationRate.findMany({ where: { seasonId: period.seasonId, locationId: period.locationId } })
+        : Promise.resolve([]),
+    ]);
+
+  // Season position: positionId -> { multiplier, fixedHourlySZD }
+  const seasonPositionMap = new Map(
+    seasonPositionRules.map((r) => [r.positionId, { multiplier: Number(r.multiplier), fixedHourlySZD: r.fixedHourlySZD ?? null }])
+  );
+  // Season variation: variationId -> { multiplierDelta, fixedHourlySZD }
+  const seasonVariationMap = new Map(
+    seasonVariationRules.map((r) => [r.variationId, { multiplierDelta: Number(r.multiplierDelta), fixedHourlySZD: r.fixedHourlySZD ?? null }])
+  );
+  // Season position+location rate: positionId -> fixedHourlySZD
+  const seasonPosLocationMap = new Map(
+    seasonPosLocationRates.map((r) => [r.positionId, r.fixedHourlySZD])
+  );
+  // Season variation+location rate: variationId -> fixedHourlySZD
+  const seasonVarLocationMap = new Map(
+    seasonVarLocationRates.map((r) => [r.variationId, r.fixedHourlySZD])
   );
 
   // Fetch all position rate histories effective at periodDate; fall back to static value if none.
@@ -152,29 +174,45 @@ export async function POST(
   for (const entry of period.entries) {
     const variationId = entry.employee?.variationId ?? null;
 
-    // Resolve fixed hourly rate (priority: history-based > static)
-    // Hierarchy: variation+location > position+location > variation global > position global
+    // Resolve fixed hourly rate with full priority chain:
+    // Season variation+location > Season position+location > date-based variation+location > date-based position+location
+    //   > Season variation global (fixedHourlySZD) > Season position global (fixedHourlySZD)
+    //   > history-based variation global > history-based position global > static fields
+    const seasonVarLocFixed = variationId ? (seasonVarLocationMap.get(variationId) ?? null) : null;
+    const seasonPosLocFixed = seasonPosLocationMap.get(entry.positionId) ?? null;
     const variationLocationFixed = variationId ? (variationLocationRateMap.get(variationId) ?? null) : null;
     const locationFixed = locationRateMap.get(entry.positionId) ?? null;
 
-    // Variation global fixed: prefer history, fall back to static field
+    const seasonVariation = variationId ? seasonVariationMap.get(variationId) : undefined;
     const variationHistorical = variationId ? variationRateMap.get(variationId) : undefined;
-    const variationFixed = variationHistorical?.fixedHourlySZD ?? entry.employee?.variation?.fixedHourlySZD ?? null;
+    const variationFixed =
+      seasonVariation?.fixedHourlySZD ??
+      variationHistorical?.fixedHourlySZD ??
+      entry.employee?.variation?.fixedHourlySZD ??
+      null;
 
-    // Position global fixed: prefer history, fall back to static field
+    const seasonPosition = seasonPositionMap.get(entry.positionId);
     const positionHistorical = positionRateMap.get(entry.positionId);
-    const positionFixed = positionHistorical?.fixedHourlySZD ?? entry.position.fixedHourlySZD ?? null;
+    const positionFixed =
+      seasonPosition?.fixedHourlySZD ??
+      positionHistorical?.fixedHourlySZD ??
+      entry.position.fixedHourlySZD ??
+      null;
 
-    const resolvedFixed = variationLocationFixed ?? locationFixed ?? variationFixed ?? positionFixed;
+    const resolvedFixed =
+      seasonVarLocFixed ?? seasonPosLocFixed ??
+      variationLocationFixed ?? locationFixed ??
+      variationFixed ?? positionFixed;
 
     // Multiplier path (used only when no fixed rate)
     // Season rule overrides take precedence, then history-based multiplier, then static field
     const baseMultiplier =
-      multiplierOverrideMap.get(entry.positionId) ??
+      seasonPosition?.multiplier ??
       positionHistorical?.multiplier ??
       Number(entry.position.multiplier);
 
     const variationDelta =
+      seasonVariation?.multiplierDelta ??
       variationHistorical?.multiplierDelta ??
       (entry.employee?.variation?.multiplierDelta != null
         ? Number(entry.employee.variation.multiplierDelta)

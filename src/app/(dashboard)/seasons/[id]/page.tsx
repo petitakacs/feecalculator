@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { SeasonForm } from "@/components/seasons/SeasonForm";
+import { SeasonRatesPanel } from "@/components/seasons/SeasonRatesPanel";
 
 export default async function SeasonDetailPage({
   params,
@@ -23,6 +24,27 @@ export default async function SeasonDetailPage({
       });
 
   if (!isNew && !season) notFound();
+
+  // Pre-fetch data for the rates panel (only needed when editing an existing season)
+  const [positions, locations, extraTaskTypes] = isNew
+    ? [[], [], []]
+    : await Promise.all([
+        prisma.position.findMany({
+          where: { active: true },
+          orderBy: { sortOrder: "asc" },
+          include: {
+            variations: {
+              where: { active: true },
+              include: {
+                locationRates: { select: { locationId: true, fixedHourlySZD: true } },
+              },
+            },
+            locationRates: { select: { locationId: true, fixedHourlySZD: true } },
+          },
+        }),
+        prisma.location.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+        prisma.extraTaskType.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+      ]);
 
   return (
     <div className="space-y-6">
@@ -56,6 +78,37 @@ export default async function SeasonDetailPage({
         }
         userRole={session.user.role}
       />
+
+      {!isNew && season && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <SeasonRatesPanel
+            seasonId={season.id}
+            positions={positions.map((p) => ({
+              id: p.id,
+              name: p.name,
+              multiplier: Number(p.multiplier),
+              fixedHourlySZD: p.fixedHourlySZD ?? null,
+              variations: p.variations.map((v) => ({
+                id: v.id,
+                name: v.name,
+                multiplierDelta: Number(v.multiplierDelta),
+                fixedHourlySZD: v.fixedHourlySZD ?? null,
+                locationRates: v.locationRates,
+              })),
+              locationRates: p.locationRates,
+            }))}
+            locations={locations}
+            extraTaskTypes={extraTaskTypes.map((e) => ({
+              id: e.id,
+              name: e.name,
+              bonusType: e.bonusType,
+              bonusAmount: e.bonusAmount,
+              rateMultiplier: e.rateMultiplier != null ? Number(e.rateMultiplier) : null,
+            }))}
+            userRole={session.user.role}
+          />
+        </div>
+      )}
     </div>
   );
 }

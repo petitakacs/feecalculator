@@ -22,13 +22,15 @@ model Location {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  employees               Employee[]
-  periods                 MonthlyPeriod[]
-  loanEntries             MonthlyEmployeeEntry[]        @relation("WorkingLocation")
-  positionRates           PositionLocationRate[]
-  variationRates          VariationLocationRate[]
-  positionRateHistory     PositionLocationRateHistory[]
-  variationRateHistory    VariationLocationRateHistory[]
+  employees                  Employee[]
+  periods                    MonthlyPeriod[]
+  loanEntries                MonthlyEmployeeEntry[]        @relation("WorkingLocation")
+  positionRates              PositionLocationRate[]
+  variationRates             VariationLocationRate[]
+  positionRateHistory        PositionLocationRateHistory[]
+  variationRateHistory       VariationLocationRateHistory[]
+  seasonPositionLocationRates SeasonPositionLocationRate[]
+  seasonVariationLocationRates SeasonVariationLocationRate[]
 }
 
 // ─── Users & Auth ─────────────────────────────────────────────────────────────
@@ -85,13 +87,14 @@ model Position {
   active                   Boolean                @default(true)
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
-  employees                Employee[]
-  seasonPositionRules      SeasonPositionRule[]
-  monthlyEntries           MonthlyEmployeeEntry[]
-  variations               PositionVariation[]
-  locationRates            PositionLocationRate[]
-  rateHistory              PositionRateHistory[]
-  locationRateHistory      PositionLocationRateHistory[]
+  employees                  Employee[]
+  seasonPositionRules        SeasonPositionRule[]
+  seasonPositionLocationRates SeasonPositionLocationRate[]
+  monthlyEntries             MonthlyEmployeeEntry[]
+  variations                 PositionVariation[]
+  locationRates              PositionLocationRate[]
+  rateHistory                PositionRateHistory[]
+  locationRateHistory        PositionLocationRateHistory[]
 }
 
 model PositionVariation {
@@ -105,10 +108,12 @@ model PositionVariation {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  employees           Employee[]
-  locationRates       VariationLocationRate[]
-  rateHistory         VariationRateHistory[]
-  locationRateHistory VariationLocationRateHistory[]
+  employees              Employee[]
+  locationRates          VariationLocationRate[]
+  rateHistory            VariationRateHistory[]
+  locationRateHistory    VariationLocationRateHistory[]
+  seasonVariationRules   SeasonVariationRule[]
+  seasonLocationRates    SeasonVariationLocationRate[]
 
   @@unique([positionId, name])
   @@index([positionId])
@@ -165,6 +170,10 @@ model Season {
   updatedAt                DateTime             @updatedAt
   periods                  MonthlyPeriod[]
   positionRules            SeasonPositionRule[]
+  variationRules           SeasonVariationRule[]
+  positionLocationRates    SeasonPositionLocationRate[]
+  variationLocationRates   SeasonVariationLocationRate[]
+  extraTaskRates           SeasonExtraTaskRate[]
 }
 
 enum ReferenceMode {
@@ -174,18 +183,88 @@ enum ReferenceMode {
 }
 
 model SeasonPositionRule {
-  id         String   @id @default(cuid())
-  seasonId   String
-  season     Season   @relation(fields: [seasonId], references: [id])
-  positionId String
-  position   Position @relation(fields: [positionId], references: [id])
-  multiplier Decimal
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String   @id @default(cuid())
+  seasonId       String
+  season         Season   @relation(fields: [seasonId], references: [id])
+  positionId     String
+  position       Position @relation(fields: [positionId], references: [id])
+  multiplier     Decimal
+  // If set, overrides multiplier-based calculation for this season
+  fixedHourlySZD Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([seasonId, positionId])
   @@index([seasonId])
   @@index([positionId])
+}
+
+model SeasonVariationRule {
+  id              String            @id @default(cuid())
+  seasonId        String
+  season          Season            @relation(fields: [seasonId], references: [id])
+  variationId     String
+  variation       PositionVariation @relation(fields: [variationId], references: [id])
+  multiplierDelta Decimal
+  fixedHourlySZD  Int?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([seasonId, variationId])
+  @@index([seasonId])
+  @@index([variationId])
+}
+
+model SeasonPositionLocationRate {
+  id             String   @id @default(cuid())
+  seasonId       String
+  season         Season   @relation(fields: [seasonId], references: [id])
+  positionId     String
+  position       Position @relation(fields: [positionId], references: [id])
+  locationId     String
+  location       Location @relation(fields: [locationId], references: [id])
+  fixedHourlySZD Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([seasonId, positionId, locationId])
+  @@index([seasonId])
+  @@index([positionId])
+  @@index([locationId])
+}
+
+model SeasonVariationLocationRate {
+  id             String            @id @default(cuid())
+  seasonId       String
+  season         Season            @relation(fields: [seasonId], references: [id])
+  variationId    String
+  variation      PositionVariation @relation(fields: [variationId], references: [id])
+  locationId     String
+  location       Location          @relation(fields: [locationId], references: [id])
+  fixedHourlySZD Int
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([seasonId, variationId, locationId])
+  @@index([seasonId])
+  @@index([variationId])
+  @@index([locationId])
+}
+
+model SeasonExtraTaskRate {
+  id              String        @id @default(cuid())
+  seasonId        String
+  season          Season        @relation(fields: [seasonId], references: [id])
+  extraTaskTypeId String
+  extraTaskType   ExtraTaskType @relation(fields: [extraTaskTypeId], references: [id])
+  bonusAmount     Int
+  rateMultiplier  Decimal?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([seasonId, extraTaskTypeId])
+  @@index([seasonId])
+  @@index([extraTaskTypeId])
 }
 
 model BusinessRule {
@@ -310,6 +389,7 @@ model ExtraTaskType {
   updatedAt      DateTime       @updatedAt
   assignments    MonthlyExtraTask[]
   rateHistory    ExtraTaskRateHistory[]
+  seasonRates    SeasonExtraTaskRate[]
 }
 
 model MonthlyExtraTask {
