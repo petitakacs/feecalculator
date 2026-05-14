@@ -43,6 +43,29 @@ export async function PATCH(
     data: parsed.data,
   });
 
+  // When the multiplier or fixedHourlySZD changes, record a new history entry effective today
+  const rateChanged =
+    parsed.data.multiplier !== undefined &&
+    (Number(parsed.data.multiplier) !== Number(existing.multiplier) ||
+      (parsed.data.fixedHourlySZD ?? null) !== existing.fixedHourlySZD);
+  if (rateChanged) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    await prisma.positionRateHistory.updateMany({
+      where: { positionId: id, effectiveTo: null, effectiveFrom: { lt: today } },
+      data: { effectiveTo: new Date(today.getTime() - 86400000) },
+    });
+    await prisma.positionRateHistory.create({
+      data: {
+        positionId: id,
+        multiplier: parsed.data.multiplier ?? existing.multiplier,
+        fixedHourlySZD: parsed.data.fixedHourlySZD ?? null,
+        effectiveFrom: today,
+        note: "Szorzó módosítva az admin felületen",
+      },
+    });
+  }
+
   await createAuditLog({
     userId: session.user.id,
     action: "UPDATE",
